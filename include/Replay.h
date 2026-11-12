@@ -34,16 +34,16 @@ public:
         for (const auto& [command, id, new_id, price, quantity, side] : m_events) {
             switch (command) {
                 case Command::Add:
-                    m_orderbook.Add(Order(id, price, quantity, side));
+                    m_status_counts[m_orderbook.Add(Order(id, price, quantity, side))]++;
                     break;
                 case Command::Reduce:
-                    m_orderbook.Reduce(id, quantity);
+                    m_status_counts[m_orderbook.Reduce(id, quantity)]++;
                     break;
                 case Command::Delete:
-                    m_orderbook.Delete(id);
+                    m_status_counts[m_orderbook.Delete(id)]++;
                     break;
                 case Command::Replace:
-                    m_orderbook.Replace(id, new_id, price, quantity);
+                    m_status_counts[m_orderbook.Replace(id, new_id, price, quantity)]++;
                     break;
                 default:
                     throw std::runtime_error("Unknown command");
@@ -55,6 +55,25 @@ public:
     {
         std::cout << "Replay Info:" << std::endl;
         std::cout << "Total Events: " << m_events.size() << std::endl;
+
+        std::cout << "Status Counts:" << std::endl;
+        for (const auto& [status, count] : m_status_counts) {
+            std::cout << "  * " << GetStatusString(status) << ": " << count << std::endl;
+        }
+    }
+
+    static std::string GetStatusString(const Orderbook::Status status)
+    {
+        switch (status) {
+            case Orderbook::Status::Success:
+                return "Success";
+            case Orderbook::Status::OrderNotFound:
+                return "Order Not Found";
+            case Orderbook::Status::OrderAlreadyExists:
+                return "Order Already Exists";
+            default:
+                return "Unknown Status";
+        }
     }
 
     std::size_t GetEventCount() const
@@ -64,6 +83,7 @@ public:
 
 private:
     std::vector<Event> m_events;
+    std::unordered_map<Orderbook::Status, std::uint32_t> m_status_counts;
     Orderbook& m_orderbook;
 
     void ParseFile(const std::string_view file_path)

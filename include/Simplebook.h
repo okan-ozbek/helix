@@ -97,14 +97,18 @@ public:
     using Asks = std::map<price_t, std::map<id_t, Orders>, std::less<>>;
     using LookupTable = std::unordered_map<id_t, Order>;
 
-    void Add(const Order& order)
+    enum class Status : std::uint8_t
+    {
+        Success,
+        OrderNotFound,
+        OrderAlreadyExists,
+        InvalidOperation,
+    };
+
+    Status Add(const Order& order)
     {
         if (m_lookup_table.contains(order.Id())) {
-            // throw std::runtime_error(
-            //     std::format("Order with the same ID {} already exists", std::to_string(order.Id()))
-            // );
-
-            return;
+            return Status::OrderAlreadyExists;
         }
 
         if (order.IsBuy()) {
@@ -115,16 +119,14 @@ public:
         }
 
         m_lookup_table.emplace(order.Id(), order);
+
+        return Status::Success;
     }
 
-    void Reduce(const id_t id, const quantity_t quantity_to_remove)
+    Status Reduce(const id_t id, const quantity_t quantity_to_remove)
     {
         if (!m_lookup_table.contains(id)) {
-            // throw std::runtime_error(
-            //     std::format("Order with the given ID {} does not exist", std::to_string(id))
-            // );
-
-            return;
+            return Status::OrderNotFound;
         }
 
         m_lookup_table.at(id).Fill(quantity_to_remove);
@@ -132,16 +134,14 @@ public:
         if (m_lookup_table.at(id).IsFilled()) {
             Delete(id);
         }
+
+        return Status::Success;
     }
 
-    void Delete(const id_t id)
+    Status Delete(const id_t id)
     {
         if (!m_lookup_table.contains(id)) {
-            // throw std::runtime_error(
-            //     std::format("Order with the given ID {} does not exist", std::to_string(id))
-            // );
-
-            return;
+            return Status::OrderNotFound;
         }
 
         const auto& order{ m_lookup_table.at(id) };
@@ -176,24 +176,18 @@ public:
         else if (order.IsSell()) {
             remove_item(m_asks);
         }
+
+        return Status::Success;
     }
 
-    void Replace(const id_t id, const id_t new_id, const price_t new_price, const quantity_t new_quantity)
+    Status Replace(const id_t id, const id_t new_id, const price_t new_price, const quantity_t new_quantity)
     {
         if (!m_lookup_table.contains(id)) {
-            // throw std::runtime_error(
-            //     std::format("Order with the given ID {} does not exist", std::to_string(id))
-            // );
-
-            return;
+            return Status::OrderNotFound;
         }
 
         if (m_lookup_table.contains(new_id)) {
-            // throw std::runtime_error(
-            //     std::format("New order with the same ID {} already exists", std::to_string(new_id))
-            // );
-
-            return;
+            return Status::OrderAlreadyExists;
         }
 
         const auto& side = m_lookup_table.at(id).IsBuy()
@@ -202,6 +196,8 @@ public:
 
         Delete(id);
         Add({ new_id, new_price, new_quantity, side });
+
+        return Status::Success;
     }
 
     void Info() const
