@@ -129,11 +129,47 @@ public:
             return Status::OrderNotFound;
         }
 
-        m_lookup_table.at(id).Fill(quantity_to_remove);
+        auto& order{ m_lookup_table.at(id) };
 
-        if (m_lookup_table.at(id).IsFilled()) {
-            Delete(id);
+        if (
+            quantity_to_remove == 0 ||
+            quantity_to_remove > order.RemainingQuantity()
+        ) {
+            return Status::InvalidOperation;
         }
+
+        if (quantity_to_remove == order.RemainingQuantity()) {
+            Delete(id);
+
+            return Status::Success;
+        }
+
+        order.Fill(quantity_to_remove);
+
+        const auto& update_map{
+            [&](auto& price_map) {
+                auto& quantity_map{ price_map.at(order.Price()) };
+                auto& orders{ quantity_map.at(id) };
+
+                orders.erase(
+                    std::remove_if(orders.begin(), orders.end(),
+                    [&](const Order& current_order) -> bool {
+                        return current_order.Id() == id;
+                    }),
+                    orders.end()
+                );
+
+                if (orders.empty()) {
+                    quantity_map.erase(id);
+                }
+
+                if (quantity_map.empty()) {
+                    price_map.erase(order.Price());
+                }
+
+                price_map[order.Price()][id].emplace_back(order);
+            }
+        };
 
         return Status::Success;
     }
