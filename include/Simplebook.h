@@ -107,6 +107,14 @@ public:
 
     Status Add(const Order& order)
     {
+        if (
+            order.Id() == 0 ||
+            order.Price() == 0 ||
+            order.RemainingQuantity() == 0
+        ) {
+            return Status::InvalidOperation;
+        }
+
         if (m_lookup_table.contains(order.Id())) {
             return Status::OrderAlreadyExists;
         }
@@ -225,6 +233,14 @@ public:
 
     Status Replace(const id_t id, const id_t new_id, const price_t new_price, const quantity_t new_quantity)
     {
+        if (
+            new_id == 0 ||
+            new_price == 0 ||
+            new_quantity == 0
+        ) {
+            return Status::InvalidOperation;
+        }
+
         if (!m_lookup_table.contains(id)) {
             return Status::OrderNotFound;
         }

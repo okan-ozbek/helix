@@ -71,6 +71,8 @@ public:
                 return "Order Not Found";
             case Orderbook::Status::OrderAlreadyExists:
                 return "Order Already Exists";
+            case Orderbook::Status::InvalidOperation:
+                return "Invalid Operation";
             default:
                 return "Unknown Status";
         }
