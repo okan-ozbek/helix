@@ -43,7 +43,7 @@ public:
                     m_orderbook.Delete(id);
                     break;
                 case Command::Replace:
-                    m_orderbook.Replace(id, Order(new_id, price, quantity, side));
+                    m_orderbook.Replace(id, new_id, price, quantity);
                     break;
                 default:
                     throw std::runtime_error("Unknown command");

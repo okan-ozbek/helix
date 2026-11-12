@@ -110,8 +110,7 @@ public:
         if (order.IsBuy()) {
             m_bids[order.Price()][order.Id()].emplace_back(order);
         }
-
-        if (order.IsSell()) {
+        else if (order.IsSell()) {
             m_asks[order.Price()][order.Id()].emplace_back(order);
         }
 
@@ -174,13 +173,12 @@ public:
         if (order.IsBuy()) {
             remove_item(m_bids);
         }
-
-        if (order.IsSell()) {
+        else if (order.IsSell()) {
             remove_item(m_asks);
         }
     }
 
-    void Replace(const id_t id, const Order& new_order)
+    void Replace(const id_t id, const id_t new_id, const price_t new_price, const quantity_t new_quantity)
     {
         if (!m_lookup_table.contains(id)) {
             // throw std::runtime_error(
@@ -190,16 +188,20 @@ public:
             return;
         }
 
-        if (m_lookup_table.contains(new_order.Id())) {
+        if (m_lookup_table.contains(new_id)) {
             // throw std::runtime_error(
-            //     std::format("New order with the same ID {} already exists", std::to_string(new_order.Id()))
+            //     std::format("New order with the same ID {} already exists", std::to_string(new_id))
             // );
 
             return;
         }
 
+        const auto& side = m_lookup_table.at(id).IsBuy()
+            ? Order::Side::Buy
+            : Order::Side::Sell;
+
         Delete(id);
-        Add(new_order);
+        Add({ new_id, new_price, new_quantity, side });
     }
 
     void Info() const
