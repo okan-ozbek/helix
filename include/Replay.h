@@ -125,92 +125,137 @@ private:
     static std::optional<Event> ParseEvent(const std::string_view command, std::istream& fields)
     {
         if (command == "ADD") {
-            id_t id;
-            std::string token;
-            price_t price;
-            quantity_t quantity;
-            std::string side_token;
-
-            if (!(fields >> token >> side_token >> price >> quantity)) {
-                return std::nullopt;
-            }
-
-            if (!ValidId(token, id)) {
-                return std::nullopt;
-            }
-
-            const auto side_opt = TryGetSide(side_token);
-            if (!side_opt) {
-                return std::nullopt;
-            }
-
-            return Event{
-                .command = Command::Add,
-                .id = id,
-                .price = price,
-                .quantity = quantity,
-                .side = *side_opt
-            };
+            return ParseAdd(command, fields);
         }
 
         if (command == "REDUCE") {
-            id_t id{};
-            std::string token{};
-            quantity_t quantity{};
-
-            if (!(fields >> token >> quantity)) {
-                return std::nullopt;
-            }
-
-            if (!ValidId(token, id)) {
-                return std::nullopt;
-            }
-
-            return Event{
-                .command = Command::Reduce,
-                .id = id,
-                .quantity = quantity
-            };
+            return ParseReduce(command, fields);
         }
 
         if (command == "DELETE") {
-            id_t id{};
-            std::string token{};
-
-            if (!(fields >> token)) {
-                return std::nullopt;
-            }
-
-            if (!ValidId(token, id)) {
-                return std::nullopt;
-            }
-
-            return Event{
-                .command = Command::Delete,
-                .id = id
-            };
+            return ParseDelete(command, fields);
         }
 
         if (command == "REPLACE") {
-            id_t id;
-            id_t new_id;
-            price_t price;
-            quantity_t quantity;
-
-            if (!(fields >> id >> new_id >> price >> quantity)) {
-                return std::nullopt;
-            }
-
-            return Event{
-                .command = Command::Replace,
-                .id = id,
-                .new_id = new_id,
-                .price = price,
-                .quantity = quantity,
-            };
+            return ParseReplace(command, fields);
         }
 
         return std::nullopt;
+    }
+
+    static std::optional<Event> ParseAdd(const std::string_view command, std::istream& fields)
+    {
+        if (command != "ADD") {
+            return std::nullopt;
+        }
+
+        id_t id;
+        std::string token;
+
+        price_t price;
+        quantity_t quantity;
+        std::string side_token;
+
+        if (!(fields >> token >> side_token >> price >> quantity)) {
+            return std::nullopt;
+        }
+
+        if (!ValidId(token, id)) {
+            return std::nullopt;
+        }
+
+        const auto side_opt = TryGetSide(side_token);
+        if (!side_opt) {
+            return std::nullopt;
+        }
+
+        return Event{
+            .command = Command::Add,
+            .id = id,
+            .price = price,
+            .quantity = quantity,
+            .side = *side_opt
+        };
+    }
+
+    static std::optional<Event> ParseReduce(const std::string_view command, std::istream& fields)
+    {
+        if (command != "REDUCE") {
+            return std::nullopt;
+        }
+
+        id_t id{};
+        std::string token{};
+
+        quantity_t quantity{};
+
+        if (!(fields >> token >> quantity)) {
+            return std::nullopt;
+        }
+
+        if (!ValidId(token, id)) {
+            return std::nullopt;
+        }
+
+        return Event{
+            .command = Command::Reduce,
+            .id = id,
+            .quantity = quantity
+        };
+    }
+
+    static std::optional<Event> ParseDelete(const std::string_view command, std::istream& fields)
+    {
+        if (command != "DELETE") {
+            return std::nullopt;
+        }
+
+        id_t id{};
+        std::string token{};
+
+        if (!(fields >> token)) {
+            return std::nullopt;
+        }
+
+        if (!ValidId(token, id)) {
+            return std::nullopt;
+        }
+
+        return Event{
+            .command = Command::Delete,
+            .id = id
+        };
+    }
+
+    static std::optional<Event> ParseReplace(const std::string_view command, std::istream& fields)
+    {
+        if (command != "REPLACE") {
+            return std::nullopt;
+        }
+
+        id_t id{};
+        id_t new_id{};
+        price_t price{};
+        quantity_t quantity{};
+
+        std::string token{};
+        std::string new_token{};
+
+        if (!(fields >> token >> new_token >> price >> quantity)) {
+            return std::nullopt;
+        }
+
+        if (!ValidId(token, id) || !ValidId(new_token, new_id)) {
+            return std::nullopt;
+        }
+
+        return Event{
+            .command = Command::Replace,
+            .id = id,
+            .new_id = new_id,
+            .price = price,
+            .quantity = quantity
+        };
     }
 
     [[nodiscard]]
