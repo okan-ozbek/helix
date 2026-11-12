@@ -150,22 +150,25 @@ private:
         }
 
         id_t id;
-        std::string token;
-
         price_t price;
         quantity_t quantity;
-        std::string side_token;
+        Order::Side side;
 
-        if (!(fields >> token >> side_token >> price >> quantity)) {
+        std::string id_str;
+        std::string price_str;
+        std::string quantity_str;
+        std::string side_str;
+
+        if (!(fields >> id_str >> side_str >> price_str >> quantity_str)) {
             return std::nullopt;
         }
 
-        if (!ValidId(token, id)) {
-            return std::nullopt;
-        }
-
-        const auto side_opt = TryGetSide(side_token);
-        if (!side_opt) {
+        if (
+            !ValidInt(id_str, id) ||
+            !ValidInt(price_str, price) ||
+            !ValidInt(quantity_str, quantity) ||
+            !ValidSide(side_str, side)
+        ) {
             return std::nullopt;
         }
 
@@ -174,7 +177,7 @@ private:
             .id = id,
             .price = price,
             .quantity = quantity,
-            .side = *side_opt
+            .side = side,
         };
     }
 
@@ -185,15 +188,19 @@ private:
         }
 
         id_t id{};
-        std::string token{};
-
         quantity_t quantity{};
 
-        if (!(fields >> token >> quantity)) {
+        std::string id_str{};
+        std::string quantity_str{};
+
+        if (!(fields >> id_str >> quantity_str)) {
             return std::nullopt;
         }
 
-        if (!ValidId(token, id)) {
+        if (
+            !ValidInt(id_str, id) ||
+            !ValidInt(quantity_str, quantity)
+        ) {
             return std::nullopt;
         }
 
@@ -211,13 +218,13 @@ private:
         }
 
         id_t id{};
-        std::string token{};
+        std::string id_str{};
 
-        if (!(fields >> token)) {
+        if (!(fields >> id_str)) {
             return std::nullopt;
         }
 
-        if (!ValidId(token, id)) {
+        if (!ValidInt(id_str, id)) {
             return std::nullopt;
         }
 
@@ -238,14 +245,21 @@ private:
         price_t price{};
         quantity_t quantity{};
 
-        std::string token{};
-        std::string new_token{};
+        std::string id_str{};
+        std::string new_id_str{};
+        std::string price_str{};
+        std::string quantity_str{};
 
-        if (!(fields >> token >> new_token >> price >> quantity)) {
+        if (!(fields >> id_str >> new_id_str >> price_str >> quantity_str)) {
             return std::nullopt;
         }
 
-        if (!ValidId(token, id) || !ValidId(new_token, new_id)) {
+        if (
+            !ValidInt(id_str, id) ||
+            !ValidInt(new_id_str, new_id) ||
+            !ValidInt(price_str, price) ||
+            !ValidInt(quantity_str, quantity)
+        ) {
             return std::nullopt;
         }
 
@@ -259,25 +273,29 @@ private:
     }
 
     [[nodiscard]]
-    static std::optional<Order::Side> TryGetSide(const std::string& side_token)
+    static bool ValidSide(const std::string& side_str, Order::Side& side)
     {
-        if (side_token == "BUY") {
-            return Order::Side::Buy;
+        if (side_str == "BUY") {
+            side = Order::Side::Buy;
+            return true;
         }
 
-        if (side_token == "SELL") {
-            return Order::Side::Sell;
+        if (side_str == "SELL") {
+            side = Order::Side::Sell;
+            return true;
         }
 
-        return std::nullopt;
+        return false;
     }
 
-    [[nodiscard]]
-    static bool ValidId(const std::string& token, id_t& id)
-    {
-        const auto [ptr, ec]{ std::from_chars(token.data(), token.data() + token.size(), id) };
 
-        return ptr == token.data() + token.size() && ec == std::errc{};
+    template<typename T>
+    [[nodiscard]]
+    static bool ValidInt(const std::string& t_str, T& id)
+    {
+        const auto [ptr, ec]{ std::from_chars(t_str.data(), t_str.data() + t_str.size(), id) };
+
+        return ptr == t_str.data() + t_str.size() && ec == std::errc{};
     }
 };
 
