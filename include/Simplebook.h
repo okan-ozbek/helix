@@ -171,6 +171,13 @@ public:
             }
         };
 
+        if (order.IsBuy()) {
+            update_map(m_bids);
+        }
+        else if (order.IsSell()) {
+            update_map(m_asks);
+        }
+
         return Status::Success;
     }
 
