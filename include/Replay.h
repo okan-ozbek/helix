@@ -111,33 +111,37 @@ private:
                 throw std::runtime_error("Invalid event format: " + line);
             }
 
+            std::string junk{};
+
+            fields >> junk;
+            if (!junk.empty()) {
+                throw std::runtime_error("Extra fields in event: " + line);
+            }
+
             m_events.push_back(*event);
         }
     }
 
-    std::optional<Event> ParseEvent(const std::string_view command, std::istream& fields)
+    static std::optional<Event> ParseEvent(const std::string_view command, std::istream& fields)
     {
         if (command == "ADD") {
             id_t id;
+            std::string token;
             price_t price;
             quantity_t quantity;
             std::string side_token;
 
-            if (!(fields >> id >> side_token >> price >> quantity)) {
-                throw std::runtime_error(
-                    std::format(
-                        "Invalid Add event format: {}, {}, {}, {}",
-                        std::to_string(id),
-                        std::to_string(price),
-                        std::to_string(quantity),
-                        side_token
-                    )
-                );
+            if (!(fields >> token >> side_token >> price >> quantity)) {
+                return std::nullopt;
+            }
+
+            if (!ValidId(token, id)) {
+                return std::nullopt;
             }
 
             const auto side_opt = TryGetSide(side_token);
             if (!side_opt) {
-                throw std::runtime_error(std::format("Invalid side token: {}", side_token));
+                return std::nullopt;
             }
 
             return Event{
@@ -150,17 +154,16 @@ private:
         }
 
         if (command == "REDUCE") {
-            id_t id;
-            quantity_t quantity;
+            id_t id{};
+            std::string token{};
+            quantity_t quantity{};
 
-            if (!(fields >> id >> quantity)) {
-                throw std::runtime_error(
-                    std::format(
-                        "Invalid Reduce event format: {}, {}",
-                        std::to_string(id),
-                        std::to_string(quantity)
-                    )
-                );
+            if (!(fields >> token >> quantity)) {
+                return std::nullopt;
+            }
+
+            if (!ValidId(token, id)) {
+                return std::nullopt;
             }
 
             return Event{
@@ -171,12 +174,15 @@ private:
         }
 
         if (command == "DELETE") {
-            id_t id;
+            id_t id{};
+            std::string token{};
 
-            if (!(fields >> id)) {
-                throw std::runtime_error(
-                    std::format("Invalid Delete event format: {}", std::to_string(id))
-                );
+            if (!(fields >> token)) {
+                return std::nullopt;
+            }
+
+            if (!ValidId(token, id)) {
+                return std::nullopt;
             }
 
             return Event{
@@ -192,15 +198,7 @@ private:
             quantity_t quantity;
 
             if (!(fields >> id >> new_id >> price >> quantity)) {
-                throw std::runtime_error(
-                    std::format(
-                        "Invalid Replace event format: {}, {}, {}, {}",
-                        std::to_string(id),
-                        std::to_string(new_id),
-                        std::to_string(price),
-                        std::to_string(quantity)
-                    )
-                );
+                return std::nullopt;
             }
 
             return Event{
@@ -215,7 +213,8 @@ private:
         return std::nullopt;
     }
 
-    [[nodiscard]] std::optional<Order::Side> TryGetSide(const std::string& side_token) const
+    [[nodiscard]]
+    static std::optional<Order::Side> TryGetSide(const std::string& side_token)
     {
         if (side_token == "BUY") {
             return Order::Side::Buy;
@@ -226,6 +225,14 @@ private:
         }
 
         return std::nullopt;
+    }
+
+    [[nodiscard]]
+    static bool ValidId(const std::string& token, id_t& id)
+    {
+        const auto [ptr, ec]{ std::from_chars(token.data(), token.data() + token.size(), id) };
+
+        return ptr == token.data() + token.size() && ec == std::errc{};
     }
 };
 
