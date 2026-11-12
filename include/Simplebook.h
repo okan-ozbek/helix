@@ -13,8 +13,8 @@
 #include <vector>
 
 using id_t = std::uint64_t;
-using price_t = std::uint32_t;
-using quantity_t = std::uint32_t;
+using price_t = std::int32_t;
+using quantity_t = std::int32_t;
 
 class Order
 {
@@ -97,52 +97,107 @@ public:
     using Asks = std::map<price_t, std::map<id_t, Orders>, std::less<>>;
     using LookupTable = std::unordered_map<id_t, Order>;
 
-    void Add(const Order& order)
+    enum class Status : std::uint8_t
     {
-        if (m_lookup_table.contains(order.Id())) {
-            // throw std::runtime_error(
-            //     std::format("Order with the same ID {} already exists", std::to_string(order.Id()))
-            // );
+        Success,
+        OrderNotFound,
+        OrderAlreadyExists,
+        InvalidOperation,
+    };
 
-            return;
+    Status Add(const Order& order)
+    {
+        if (
+            order.Id() == 0 ||
+            order.Price() <= 0 ||
+            order.RemainingQuantity() <= 0
+        ) {
+            return Status::InvalidOperation;
+        }
+
+        if (m_lookup_table.contains(order.Id())) {
+            return Status::OrderAlreadyExists;
         }
 
         if (order.IsBuy()) {
             m_bids[order.Price()][order.Id()].emplace_back(order);
         }
-
-        if (order.IsSell()) {
+        else if (order.IsSell()) {
             m_asks[order.Price()][order.Id()].emplace_back(order);
         }
 
         m_lookup_table.emplace(order.Id(), order);
+
+        return Status::Success;
     }
 
-    void Reduce(const id_t id, const quantity_t quantity_to_remove)
+    Status Reduce(const id_t id, const quantity_t quantity_to_remove)
     {
         if (!m_lookup_table.contains(id)) {
-            // throw std::runtime_error(
-            //     std::format("Order with the given ID {} does not exist", std::to_string(id))
-            // );
-
-            return;
+            return Status::OrderNotFound;
         }
 
-        m_lookup_table.at(id).Fill(quantity_to_remove);
+        auto& order{ m_lookup_table.at(id) };
 
-        if (m_lookup_table.at(id).IsFilled()) {
+        if (
+            quantity_to_remove == 0 ||
+            quantity_to_remove > order.RemainingQuantity()
+        ) {
+            return Status::InvalidOperation;
+        }
+
+        if (quantity_to_remove == order.RemainingQuantity()) {
             Delete(id);
+
+            return Status::Success;
         }
+
+        try {
+            order.Fill(quantity_to_remove);
+        }
+        catch (...) {
+            return Status::InvalidOperation;
+        }
+
+        const auto& update_map{
+            [&](auto& price_map) {
+                auto& quantity_map{ price_map.at(order.Price()) };
+                auto& orders{ quantity_map.at(id) };
+
+                orders.erase(
+                    std::remove_if(orders.begin(), orders.end(),
+                    [&](const Order& current_order) -> bool {
+                        return current_order.Id() == id;
+                    }),
+                    orders.end()
+                );
+
+                if (orders.empty()) {
+                    quantity_map.erase(id);
+                }
+
+                if (quantity_map.empty()) {
+                    price_map.erase(order.Price());
+                }
+
+                price_map[order.Price()][id].emplace_back(order);
+            }
+        };
+
+        if (order.IsBuy()) {
+            update_map(m_bids);
+        }
+        else if (order.IsSell()) {
+            update_map(m_asks);
+        }
+
+        return Status::Success;
     }
 
-    void Delete(const id_t id)
+    Status Delete(const id_t id)
     {
         if (!m_lookup_table.contains(id)) {
-            // throw std::runtime_error(
-            //     std::format("Order with the given ID {} does not exist", std::to_string(id))
-            // );
-
-            return;
+            return Status::OrderNotFound;
         }
 
         const auto& order{ m_lookup_table.at(id) };
@@ -174,32 +229,39 @@ public:
         if (order.IsBuy()) {
             remove_item(m_bids);
         }
-
-        if (order.IsSell()) {
+        else if (order.IsSell()) {
             remove_item(m_asks);
         }
+
+        return Status::Success;
     }
 
-    void Replace(const id_t id, const Order& new_order)
+    Status Replace(const id_t id, const id_t new_id, const price_t new_price, const quantity_t new_quantity)
     {
+        if (
+            new_id == 0 ||
+            new_price <= 0 ||
+            new_quantity <= 0
+        ) {
+            return Status::InvalidOperation;
+        }
+
         if (!m_lookup_table.contains(id)) {
-            // throw std::runtime_error(
-            //     std::format("Order with the given ID {} does not exist", std::to_string(id))
-            // );
-
-            return;
+            return Status::OrderNotFound;
         }
 
-        if (m_lookup_table.contains(new_order.Id())) {
-            // throw std::runtime_error(
-            //     std::format("New order with the same ID {} already exists", std::to_string(new_order.Id()))
-            // );
-
-            return;
+        if (m_lookup_table.contains(new_id)) {
+            return Status::OrderAlreadyExists;
         }
+
+        const auto& side = m_lookup_table.at(id).IsBuy()
+            ? Order::Side::Buy
+            : Order::Side::Sell;
 
         Delete(id);
-        Add(new_order);
+        Add({ new_id, new_price, new_quantity, side });
+
+        return Status::Success;
     }
 
     void Info() const
