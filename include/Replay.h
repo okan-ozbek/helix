@@ -5,7 +5,6 @@
 #ifndef HELIX_REPLAY_H
 #define HELIX_REPLAY_H
 
-#include <format>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -14,6 +13,7 @@
 #include <vector>
 #include <sstream>
 #include <optional>
+#include <charconv>
 
 #include "Event.h"
 #include "Simplebook.h"
