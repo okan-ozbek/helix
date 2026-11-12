@@ -33,22 +33,26 @@ public:
         , m_side(side)
     {}
 
-    [[nodiscard]] id_t Id() const
+    [[nodiscard]]
+    id_t Id() const
     {
         return m_id;
     }
 
-    [[nodiscard]] price_t Price() const
+    [[nodiscard]]
+    price_t Price() const
     {
         return m_price;
     }
 
-    [[nodiscard]] quantity_t RemainingQuantity() const
+    [[nodiscard]]
+    quantity_t RemainingQuantity() const
     {
         return m_remaining_quantity;
     }
 
-    [[nodiscard]] quantity_t InitialQuantity() const
+    [[nodiscard]]
+    quantity_t InitialQuantity() const
     {
         return m_initial_quantity;
     }
@@ -65,17 +69,20 @@ public:
         m_remaining_quantity -= quantity;
     }
 
-    [[nodiscard]] bool IsFilled() const
+    [[nodiscard]]
+    bool IsFilled() const
     {
         return m_remaining_quantity == 0;
     }
 
-    [[nodiscard]] bool IsSell() const
+    [[nodiscard]]
+    bool IsSell() const
     {
         return m_side == Side::Sell;
     }
 
-    [[nodiscard]] bool IsBuy() const
+    [[nodiscard]]
+    bool IsBuy() const
     {
         return m_side == Side::Buy;
     }
@@ -108,7 +115,7 @@ public:
     Status Add(const Order& order)
     {
         if (
-            order.Id() == 0 ||
+            order.Id() <= 0 ||
             order.Price() <= 0 ||
             order.RemainingQuantity() <= 0
         ) {
@@ -196,6 +203,10 @@ public:
 
     Status Delete(const id_t id)
     {
+        if (id <= 0) {
+            return Status::InvalidOperation;
+        }
+
         if (!m_lookup_table.contains(id)) {
             return Status::OrderNotFound;
         }
@@ -239,7 +250,8 @@ public:
     Status Replace(const id_t id, const id_t new_id, const price_t new_price, const quantity_t new_quantity)
     {
         if (
-            new_id == 0 ||
+            id <= 0 ||
+            new_id <= 0 ||
             new_price <= 0 ||
             new_quantity <= 0
         ) {

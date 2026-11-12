@@ -7,6 +7,5 @@ add_executable(
     helix src/main.cpp
     include/SimpleBook.h
     include/Event.h
-    src/Simplebook.cpp
-    include/Replay.h
+        include/Replay.h
 )
