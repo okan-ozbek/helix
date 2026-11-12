@@ -11,7 +11,7 @@
 int main()
 {
     auto orderbook = Orderbook{};
-    auto replay = Replay{ orderbook, "../data/Test.txt" };
+    auto replay = Replay{ orderbook, "../data/Example.txt" };
 
     const auto start = std::chrono::steady_clock::now();
 
