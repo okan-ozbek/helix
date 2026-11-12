@@ -13,8 +13,8 @@
 #include <vector>
 
 using id_t = std::uint64_t;
-using price_t = std::uint32_t;
-using quantity_t = std::uint32_t;
+using price_t = std::int32_t;
+using quantity_t = std::int32_t;
 
 class Order
 {
@@ -109,8 +109,8 @@ public:
     {
         if (
             order.Id() == 0 ||
-            order.Price() == 0 ||
-            order.RemainingQuantity() == 0
+            order.Price() <= 0 ||
+            order.RemainingQuantity() <= 0
         ) {
             return Status::InvalidOperation;
         }
@@ -152,7 +152,12 @@ public:
             return Status::Success;
         }
 
-        order.Fill(quantity_to_remove);
+        try {
+            order.Fill(quantity_to_remove);
+        }
+        catch (...) {
+            return Status::InvalidOperation;
+        }
 
         const auto& update_map{
             [&](auto& price_map) {
@@ -235,8 +240,8 @@ public:
     {
         if (
             new_id == 0 ||
-            new_price == 0 ||
-            new_quantity == 0
+            new_price <= 0 ||
+            new_quantity <= 0
         ) {
             return Status::InvalidOperation;
         }
