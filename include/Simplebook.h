@@ -1,0 +1,219 @@
+﻿//
+// Created by Okan Can Özbek on 12/11/2026.
+//
+
+#ifndef HELIX_SIMPLEBOOK_H
+#define HELIX_SIMPLEBOOK_H
+
+#include <algorithm>
+#include <cstdint>
+#include <map>
+#include <stdexcept>
+#include <unordered_map>
+#include <vector>
+
+using id_t = std::uint64_t;
+using price_t = std::uint32_t;
+using quantity_t = std::uint32_t;
+
+class Order
+{
+public:
+    enum class Side : std::uint8_t
+    {
+        Buy,
+        Sell,
+    };
+
+    Order(const id_t id, const price_t price, const quantity_t quantity, const Side side)
+        : m_id(id)
+        , m_price(price)
+        , m_remaining_quantity(quantity)
+        , m_initial_quantity(quantity)
+        , m_side(side)
+    {}
+
+    [[nodiscard]] id_t Id() const
+    {
+        return m_id;
+    }
+
+    [[nodiscard]] price_t Price() const
+    {
+        return m_price;
+    }
+
+    [[nodiscard]] quantity_t RemainingQuantity() const
+    {
+        return m_remaining_quantity;
+    }
+
+    [[nodiscard]] quantity_t InitialQuantity() const
+    {
+        return m_initial_quantity;
+    }
+
+    void Fill(const quantity_t quantity)
+    {
+        if (quantity > m_remaining_quantity)
+        {
+            throw std::runtime_error(
+                std::format("Fill quantity {} exceeds remaining quantity {}", std::to_string(quantity), std::to_string(m_remaining_quantity))
+            );
+        }
+
+        m_remaining_quantity -= quantity;
+    }
+
+    [[nodiscard]] bool IsFilled() const
+    {
+        return m_remaining_quantity == 0;
+    }
+
+    [[nodiscard]] bool IsSell() const
+    {
+        return m_side == Side::Sell;
+    }
+
+    [[nodiscard]] bool IsBuy() const
+    {
+        return m_side == Side::Buy;
+    }
+
+private:
+    id_t m_id;
+    price_t m_price;
+    quantity_t m_remaining_quantity;
+    quantity_t m_initial_quantity;
+    Side m_side;
+};
+
+using Orders = std::vector<Order>;
+
+class Orderbook
+{
+public:
+    using Bids = std::map<price_t, std::map<id_t, Orders>, std::greater<>>;
+    using Asks = std::map<price_t, std::map<id_t, Orders>, std::less<>>;
+    using LookupTable = std::unordered_map<id_t, Order>;
+
+    void Add(const Order& order)
+    {
+        if (m_lookup_table.contains(order.Id())) {
+            // throw std::runtime_error(
+            //     std::format("Order with the same ID {} already exists", std::to_string(order.Id()))
+            // );
+
+            return;
+        }
+
+        if (order.IsBuy()) {
+            m_bids[order.Price()][order.Id()].emplace_back(order);
+        }
+
+        if (order.IsSell()) {
+            m_asks[order.Price()][order.Id()].emplace_back(order);
+        }
+
+        m_lookup_table.emplace(order.Id(), order);
+    }
+
+    void Reduce(const id_t id, const quantity_t quantity_to_remove)
+    {
+        if (!m_lookup_table.contains(id)) {
+            // throw std::runtime_error(
+            //     std::format("Order with the given ID {} does not exist", std::to_string(id))
+            // );
+
+            return;
+        }
+
+        m_lookup_table.at(id).Fill(quantity_to_remove);
+
+        if (m_lookup_table.at(id).IsFilled()) {
+            Delete(id);
+        }
+    }
+
+    void Delete(const id_t id)
+    {
+        if (!m_lookup_table.contains(id)) {
+            // throw std::runtime_error(
+            //     std::format("Order with the given ID {} does not exist", std::to_string(id))
+            // );
+
+            return;
+        }
+
+        const auto& order{ m_lookup_table.at(id) };
+        const auto& remove_item{
+            [&](auto& price_map) -> void {
+                auto& quantity_map{ price_map.at(order.Price()) };
+                auto& orders{ quantity_map.at(id) };
+
+                orders.erase(
+                    std::remove_if(orders.begin(), orders.end(),
+                    [&](const Order& current_order) -> bool {
+                        return current_order.Id() == id;
+                    }),
+                    orders.end()
+                );
+
+                if (orders.empty()) {
+                    quantity_map.erase(id);
+                }
+
+                if (quantity_map.empty()) {
+                    price_map.erase(order.Price());
+                }
+
+                m_lookup_table.erase(id);
+            }
+        };
+
+        if (order.IsBuy()) {
+            remove_item(m_bids);
+        }
+
+        if (order.IsSell()) {
+            remove_item(m_asks);
+        }
+    }
+
+    void Replace(const id_t id, const Order& new_order)
+    {
+        if (!m_lookup_table.contains(id)) {
+            // throw std::runtime_error(
+            //     std::format("Order with the given ID {} does not exist", std::to_string(id))
+            // );
+
+            return;
+        }
+
+        if (m_lookup_table.contains(new_order.Id())) {
+            // throw std::runtime_error(
+            //     std::format("New order with the same ID {} already exists", std::to_string(new_order.Id()))
+            // );
+
+            return;
+        }
+
+        Delete(id);
+        Add(new_order);
+    }
+
+    void Info() const
+    {
+        std::cout << "Orderbook Info:" << std::endl;
+        std::cout << "Bids: " << m_bids.size() << " price levels" << std::endl;
+        std::cout << "Asks: " << m_asks.size() << " price levels" << std::endl;
+        std::cout << "Total Orders: " << m_lookup_table.size() << std::endl;
+    }
+
+private:
+    Bids m_bids;
+    Asks m_asks;
+    LookupTable m_lookup_table;
+};
+
+#endif //HELIX_SIMPLEBOOK_H
