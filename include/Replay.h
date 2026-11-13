@@ -76,6 +76,8 @@ public:
                 return "Order Already Exists";
             case Orderbook::Status::InvalidOperation:
                 return "Invalid Operation";
+            case Orderbook::Status::CapacityReached:
+                return "Capacity Reached";
             default:
                 return "Unknown Status";
         }

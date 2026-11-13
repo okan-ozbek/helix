@@ -109,7 +109,7 @@ public:
 
     Orderbook() = default;
 
-    explicit Orderbook(const quantity_t order_limit)
+    explicit Orderbook(const std::size_t order_limit)
         : m_order_limit{ order_limit }
     {}
 
@@ -286,7 +286,7 @@ private:
     bids_t m_bids;
     asks_t m_asks;
     lookup_table_t m_lookup_table;
-    quantity_t m_order_limit{ 1024 };
+    std::size_t m_order_limit{ 1024 };
 
     [[nodiscard]]
     bool IsFull() const
