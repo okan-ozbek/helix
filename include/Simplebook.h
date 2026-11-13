@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <ranges>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -100,9 +101,9 @@ using Orders = std::vector<Order>;
 class Orderbook
 {
 public:
-    using Bids = std::map<price_t, std::map<id_t, Orders>, std::greater<>>;
-    using Asks = std::map<price_t, std::map<id_t, Orders>, std::less<>>;
-    using LookupTable = std::unordered_map<id_t, Order>;
+    using bids_t = std::map<price_t, std::map<quantity_t, Orders>, std::greater<>>;
+    using asks_t = std::map<price_t, std::map<quantity_t, Orders>, std::less<>>;
+    using lookup_table_t = std::unordered_map<id_t, Order>;
 
     enum class Status : std::uint8_t
     {
@@ -111,6 +112,47 @@ public:
         OrderAlreadyExists,
         InvalidOperation,
     };
+
+    struct PriceLevel
+    {
+        price_t price{};
+        quantity_t total_quantity{};
+        //std::vector<Order> orders{};
+    };
+
+    [[nodiscard]]
+    std::optional<PriceLevel> BestBid()
+    {
+        if (m_bids.empty()) {
+            return std::nullopt;
+        }
+
+        const auto& [best_price, quantity_map] = *m_bids.begin();
+
+        quantity_t total_quantity = 0;
+        for (const auto &quantity: quantity_map | std::views::keys) {
+            total_quantity += quantity;
+        }
+
+        return PriceLevel{ best_price, total_quantity };
+    }
+
+    [[nodiscard]]
+    std::optional<PriceLevel> BestAsk()
+    {
+        if (m_asks.empty()) {
+            return std::nullopt;
+        }
+
+        const auto& [best_price, quantity_map] = *m_asks.begin();
+
+        quantity_t total_quantity = 0;
+        for (const auto &quantity: quantity_map | std::views::keys) {
+            total_quantity += quantity;
+        }
+
+        return PriceLevel{ best_price, total_quantity };
+    }
 
     Status Add(const Order& order)
     {
@@ -285,9 +327,9 @@ public:
     }
 
 private:
-    Bids m_bids;
-    Asks m_asks;
-    LookupTable m_lookup_table;
+    bids_t m_bids;
+    asks_t m_asks;
+    lookup_table_t m_lookup_table;
 };
 
 #endif //HELIX_SIMPLEBOOK_H
