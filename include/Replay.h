@@ -48,6 +48,9 @@ public:
                 default:
                     throw std::runtime_error("Unknown command");
             }
+
+            // const auto& bestBid { m_orderbook.BestBid() };
+            // const auto& bestAsk { m_orderbook.BestAsk() };
         }
     }
 
