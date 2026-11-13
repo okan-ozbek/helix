@@ -209,6 +209,10 @@ private:
             return std::nullopt;
         }
 
+        if (quantity < 0) {
+            return std::nullopt;
+        }
+
         return Event{
             .command = Command::Reduce,
             .id = id,
