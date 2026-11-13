@@ -130,8 +130,8 @@ public:
         const auto& [best_price, quantity_map] = *m_bids.begin();
 
         quantity_t total_quantity = 0;
-        for (const auto &quantity: quantity_map | std::views::keys) {
-            total_quantity += quantity;
+        for (const auto & [quantity, orders]: quantity_map) {
+            total_quantity += quantity * static_cast<quantity_t>(orders.size());
         }
 
         return PriceLevel{ best_price, total_quantity };
@@ -147,8 +147,8 @@ public:
         const auto& [best_price, quantity_map] = *m_asks.begin();
 
         quantity_t total_quantity = 0;
-        for (const auto &quantity: quantity_map | std::views::keys) {
-            total_quantity += quantity;
+        for (const auto & [quantity, orders]: quantity_map) {
+            total_quantity += quantity * static_cast<quantity_t>(orders.size());
         }
 
         return PriceLevel{ best_price, total_quantity };
@@ -169,10 +169,10 @@ public:
         }
 
         if (order.IsBuy()) {
-            m_bids[order.Price()][order.Id()].emplace_back(order);
+            m_bids[order.Price()][order.RemainingQuantity()].emplace_back(order);
         }
         else if (order.IsSell()) {
-            m_asks[order.Price()][order.Id()].emplace_back(order);
+            m_asks[order.Price()][order.RemainingQuantity()].emplace_back(order);
         }
 
         m_lookup_table.emplace(order.Id(), order);
@@ -201,6 +201,8 @@ public:
             return Status::Success;
         }
 
+        const auto temp_remaining_quantity{ order.RemainingQuantity() };
+
         try {
             order.Fill(quantity_to_remove);
         }
@@ -211,7 +213,7 @@ public:
         const auto& update_map{
             [&](auto& price_map) {
                 auto& quantity_map{ price_map.at(order.Price()) };
-                auto& orders{ quantity_map.at(id) };
+                auto& orders{ quantity_map.at(temp_remaining_quantity) };
 
                 orders.erase(
                     std::remove_if(orders.begin(), orders.end(),
@@ -222,14 +224,14 @@ public:
                 );
 
                 if (orders.empty()) {
-                    quantity_map.erase(id);
+                    quantity_map.erase(temp_remaining_quantity);
                 }
 
                 if (quantity_map.empty()) {
                     price_map.erase(order.Price());
                 }
 
-                price_map[order.Price()][id].emplace_back(order);
+                price_map[order.Price()][order.RemainingQuantity()].emplace_back(order);
             }
         };
 
@@ -257,7 +259,7 @@ public:
         const auto& remove_item{
             [&](auto& price_map) -> void {
                 auto& quantity_map{ price_map.at(order.Price()) };
-                auto& orders{ quantity_map.at(id) };
+                auto& orders{ quantity_map.at(order.RemainingQuantity()) };
 
                 orders.erase(
                     std::remove_if(orders.begin(), orders.end(),
@@ -268,7 +270,7 @@ public:
                 );
 
                 if (orders.empty()) {
-                    quantity_map.erase(id);
+                    quantity_map.erase(order.RemainingQuantity());
                 }
 
                 if (quantity_map.empty()) {
