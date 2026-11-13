@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <ranges>
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
@@ -15,6 +16,8 @@
 using id_t = std::uint64_t;
 using price_t = std::int32_t;
 using quantity_t = std::int32_t;
+using large_price_t = std::int64_t;
+using large_quantity_t = std::int64_t;
 
 class Order
 {
@@ -100,9 +103,15 @@ using Orders = std::vector<Order>;
 class Orderbook
 {
 public:
-    using Bids = std::map<price_t, std::map<id_t, Orders>, std::greater<>>;
-    using Asks = std::map<price_t, std::map<id_t, Orders>, std::less<>>;
-    using LookupTable = std::unordered_map<id_t, Order>;
+    using bids_t = std::map<price_t, std::map<quantity_t, Orders>, std::greater<>>;
+    using asks_t = std::map<price_t, std::map<quantity_t, Orders>, std::less<>>;
+    using lookup_table_t = std::unordered_map<id_t, Order>;
+
+    Orderbook() = default;
+
+    explicit Orderbook(const std::size_t order_limit)
+        : m_order_limit{ order_limit }
+    {}
 
     enum class Status : std::uint8_t
     {
@@ -110,27 +119,68 @@ public:
         OrderNotFound,
         OrderAlreadyExists,
         InvalidOperation,
+        CapacityReached,
     };
+
+    struct PriceLevel
+    {
+        large_price_t price{};
+        large_quantity_t total_quantity{};
+    };
+
+    [[nodiscard]]
+    std::optional<PriceLevel> BestBid() const
+    {
+        if (m_bids.empty()) {
+            return std::nullopt;
+        }
+
+        const auto& [best_price, quantity_map] = *m_bids.begin();
+
+        large_quantity_t total_quantity = 0;
+        for (const auto & [quantity, orders]: quantity_map) {
+            total_quantity += quantity * static_cast<large_quantity_t>(orders.size());
+        }
+
+        return PriceLevel{ best_price, total_quantity };
+    }
+
+    [[nodiscard]]
+    std::optional<PriceLevel> BestAsk() const
+    {
+        if (m_asks.empty()) {
+            return std::nullopt;
+        }
+
+        const auto& [best_price, quantity_map] = *m_asks.begin();
+
+        large_quantity_t total_quantity = 0;
+        for (const auto & [quantity, orders]: quantity_map) {
+            total_quantity += quantity * static_cast<large_quantity_t>(orders.size());
+        }
+
+        return PriceLevel{ best_price, total_quantity };
+    }
 
     Status Add(const Order& order)
     {
-        if (
-            order.Id() <= 0 ||
-            order.Price() <= 0 ||
-            order.RemainingQuantity() <= 0
-        ) {
-            return Status::InvalidOperation;
-        }
-
         if (m_lookup_table.contains(order.Id())) {
             return Status::OrderAlreadyExists;
         }
 
+        if (IsFull()) {
+            return Status::CapacityReached;
+        }
+
+        if (IsInvalidAdd(order)) {
+            return Status::InvalidOperation;
+        }
+
         if (order.IsBuy()) {
-            m_bids[order.Price()][order.Id()].emplace_back(order);
+            m_bids[order.Price()][order.RemainingQuantity()].emplace_back(order);
         }
         else if (order.IsSell()) {
-            m_asks[order.Price()][order.Id()].emplace_back(order);
+            m_asks[order.Price()][order.RemainingQuantity()].emplace_back(order);
         }
 
         m_lookup_table.emplace(order.Id(), order);
@@ -159,6 +209,8 @@ public:
             return Status::Success;
         }
 
+        const auto temp_remaining_quantity{ order.RemainingQuantity() };
+
         try {
             order.Fill(quantity_to_remove);
         }
@@ -166,36 +218,11 @@ public:
             return Status::InvalidOperation;
         }
 
-        const auto& update_map{
-            [&](auto& price_map) {
-                auto& quantity_map{ price_map.at(order.Price()) };
-                auto& orders{ quantity_map.at(id) };
-
-                orders.erase(
-                    std::remove_if(orders.begin(), orders.end(),
-                    [&](const Order& current_order) -> bool {
-                        return current_order.Id() == id;
-                    }),
-                    orders.end()
-                );
-
-                if (orders.empty()) {
-                    quantity_map.erase(id);
-                }
-
-                if (quantity_map.empty()) {
-                    price_map.erase(order.Price());
-                }
-
-                price_map[order.Price()][id].emplace_back(order);
-            }
-        };
-
         if (order.IsBuy()) {
-            update_map(m_bids);
+            UpdateMap(m_bids, order, temp_remaining_quantity);
         }
         else if (order.IsSell()) {
-            update_map(m_asks);
+            UpdateMap(m_asks, order, temp_remaining_quantity);
         }
 
         return Status::Success;
@@ -203,45 +230,21 @@ public:
 
     Status Delete(const id_t id)
     {
-        if (id <= 0) {
-            return Status::InvalidOperation;
-        }
-
         if (!m_lookup_table.contains(id)) {
             return Status::OrderNotFound;
         }
 
+        if (IsInvalidDelete(id)) {
+            return Status::InvalidOperation;
+        }
+
         const auto& order{ m_lookup_table.at(id) };
-        const auto& remove_item{
-            [&](auto& price_map) -> void {
-                auto& quantity_map{ price_map.at(order.Price()) };
-                auto& orders{ quantity_map.at(id) };
-
-                orders.erase(
-                    std::remove_if(orders.begin(), orders.end(),
-                    [&](const Order& current_order) -> bool {
-                        return current_order.Id() == id;
-                    }),
-                    orders.end()
-                );
-
-                if (orders.empty()) {
-                    quantity_map.erase(id);
-                }
-
-                if (quantity_map.empty()) {
-                    price_map.erase(order.Price());
-                }
-
-                m_lookup_table.erase(id);
-            }
-        };
 
         if (order.IsBuy()) {
-            remove_item(m_bids);
+            RemoveItem(m_bids, order);
         }
         else if (order.IsSell()) {
-            remove_item(m_asks);
+            RemoveItem(m_asks, order);
         }
 
         return Status::Success;
@@ -249,12 +252,7 @@ public:
 
     Status Replace(const id_t id, const id_t new_id, const price_t new_price, const quantity_t new_quantity)
     {
-        if (
-            id <= 0 ||
-            new_id <= 0 ||
-            new_price <= 0 ||
-            new_quantity <= 0
-        ) {
+        if (IsInvalidReplace(id, new_id, new_price, new_quantity)) {
             return Status::InvalidOperation;
         }
 
@@ -285,9 +283,89 @@ public:
     }
 
 private:
-    Bids m_bids;
-    Asks m_asks;
-    LookupTable m_lookup_table;
+    bids_t m_bids;
+    asks_t m_asks;
+    lookup_table_t m_lookup_table;
+    std::size_t m_order_limit{ 1024 };
+
+    [[nodiscard]]
+    bool IsFull() const
+    {
+        return m_lookup_table.size() >= m_order_limit;
+    }
+
+    [[nodiscard]]
+    static bool IsInvalidAdd(const Order& order)
+    {
+        return
+            order.Id() <= 0 ||
+            order.Price() <= 0 ||
+            order.RemainingQuantity() <= 0;
+    }
+
+    [[nodiscard]]
+    static bool IsInvalidReplace(const id_t id, const id_t new_id, const price_t new_price, const quantity_t new_quantity)
+    {
+        return
+            id <= 0 ||
+            new_id <= 0 ||
+            new_price <= 0 ||
+            new_quantity <= 0;
+    }
+
+    static bool IsInvalidDelete(const id_t id)
+    {
+        return
+            id <= 0;
+    }
+
+    void RemoveItem(auto& price_map, const Order& order)
+    {
+        auto& quantity_map{ price_map.at(order.Price()) };
+        auto& orders{ quantity_map.at(order.RemainingQuantity()) };
+
+        orders.erase(
+            std::remove_if(orders.begin(), orders.end(),
+            [&](const Order& current_order) -> bool {
+                return current_order.Id() == order.Id();
+            }),
+            orders.end()
+        );
+
+        if (orders.empty()) {
+            quantity_map.erase(order.RemainingQuantity());
+        }
+
+        if (quantity_map.empty()) {
+            price_map.erase(order.Price());
+        }
+
+        m_lookup_table.erase(order.Id());
+    }
+
+    void UpdateMap(auto& price_map, const Order& order, const quantity_t temp_remaining_quantity)
+    {
+        auto& quantity_map{ price_map.at(order.Price()) };
+        auto& orders{ quantity_map.at(temp_remaining_quantity) };
+
+        orders.erase(
+            std::remove_if(orders.begin(), orders.end(),
+            [&](const Order& current_order) -> bool {
+                return current_order.Id() == order.Id();
+            }),
+            orders.end()
+        );
+
+        if (orders.empty()) {
+            quantity_map.erase(temp_remaining_quantity);
+        }
+
+        if (quantity_map.empty()) {
+            price_map.erase(order.Price());
+        }
+
+        price_map[order.Price()][order.RemainingQuantity()].emplace_back(order);
+    }
 };
 
 #endif //HELIX_SIMPLEBOOK_H

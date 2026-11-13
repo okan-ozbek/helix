@@ -5,7 +5,6 @@
 #ifndef HELIX_REPLAY_H
 #define HELIX_REPLAY_H
 
-#include <format>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -14,6 +13,7 @@
 #include <vector>
 #include <sstream>
 #include <optional>
+#include <charconv>
 
 #include "Event.h"
 #include "Simplebook.h"
@@ -48,6 +48,9 @@ public:
                 default:
                     throw std::runtime_error("Unknown command");
             }
+
+            // const auto& bestBid { m_orderbook.BestBid() };
+            // const auto& bestAsk { m_orderbook.BestAsk() };
         }
     }
 
@@ -73,6 +76,8 @@ public:
                 return "Order Already Exists";
             case Orderbook::Status::InvalidOperation:
                 return "Invalid Operation";
+            case Orderbook::Status::CapacityReached:
+                return "Capacity Reached";
             default:
                 return "Unknown Status";
         }
@@ -125,114 +130,181 @@ private:
     static std::optional<Event> ParseEvent(const std::string_view command, std::istream& fields)
     {
         if (command == "ADD") {
-            id_t id;
-            std::string token;
-            price_t price;
-            quantity_t quantity;
-            std::string side_token;
-
-            if (!(fields >> token >> side_token >> price >> quantity)) {
-                return std::nullopt;
-            }
-
-            if (!ValidId(token, id)) {
-                return std::nullopt;
-            }
-
-            const auto side_opt = TryGetSide(side_token);
-            if (!side_opt) {
-                return std::nullopt;
-            }
-
-            return Event{
-                .command = Command::Add,
-                .id = id,
-                .price = price,
-                .quantity = quantity,
-                .side = *side_opt
-            };
+            return ParseAdd(command, fields);
         }
 
         if (command == "REDUCE") {
-            id_t id{};
-            std::string token{};
-            quantity_t quantity{};
-
-            if (!(fields >> token >> quantity)) {
-                return std::nullopt;
-            }
-
-            if (!ValidId(token, id)) {
-                return std::nullopt;
-            }
-
-            return Event{
-                .command = Command::Reduce,
-                .id = id,
-                .quantity = quantity
-            };
+            return ParseReduce(command, fields);
         }
 
         if (command == "DELETE") {
-            id_t id{};
-            std::string token{};
-
-            if (!(fields >> token)) {
-                return std::nullopt;
-            }
-
-            if (!ValidId(token, id)) {
-                return std::nullopt;
-            }
-
-            return Event{
-                .command = Command::Delete,
-                .id = id
-            };
+            return ParseDelete(command, fields);
         }
 
         if (command == "REPLACE") {
-            id_t id;
-            id_t new_id;
-            price_t price;
-            quantity_t quantity;
-
-            if (!(fields >> id >> new_id >> price >> quantity)) {
-                return std::nullopt;
-            }
-
-            return Event{
-                .command = Command::Replace,
-                .id = id,
-                .new_id = new_id,
-                .price = price,
-                .quantity = quantity,
-            };
+            return ParseReplace(command, fields);
         }
 
         return std::nullopt;
     }
 
-    [[nodiscard]]
-    static std::optional<Order::Side> TryGetSide(const std::string& side_token)
+    static std::optional<Event> ParseAdd(const std::string_view command, std::istream& fields)
     {
-        if (side_token == "BUY") {
-            return Order::Side::Buy;
+        if (command != "ADD") {
+            return std::nullopt;
         }
 
-        if (side_token == "SELL") {
-            return Order::Side::Sell;
+        id_t id;
+        price_t price;
+        quantity_t quantity;
+        Order::Side side;
+
+        std::string id_str;
+        std::string price_str;
+        std::string quantity_str;
+        std::string side_str;
+
+        if (!(fields >> id_str >> side_str >> price_str >> quantity_str)) {
+            return std::nullopt;
         }
 
-        return std::nullopt;
+        if (
+            !ValidInt(id_str, id) ||
+            !ValidInt(price_str, price) ||
+            !ValidInt(quantity_str, quantity) ||
+            !ValidSide(side_str, side)
+        ) {
+            return std::nullopt;
+        }
+
+        return Event{
+            .command = Command::Add,
+            .id = id,
+            .price = price,
+            .quantity = quantity,
+            .side = side,
+        };
+    }
+
+    static std::optional<Event> ParseReduce(const std::string_view command, std::istream& fields)
+    {
+        if (command != "REDUCE") {
+            return std::nullopt;
+        }
+
+        id_t id{};
+        quantity_t quantity{};
+
+        std::string id_str{};
+        std::string quantity_str{};
+
+        if (!(fields >> id_str >> quantity_str)) {
+            return std::nullopt;
+        }
+
+        if (
+            !ValidInt(id_str, id) ||
+            !ValidInt(quantity_str, quantity)
+        ) {
+            return std::nullopt;
+        }
+
+        if (quantity < 0) {
+            return std::nullopt;
+        }
+
+        return Event{
+            .command = Command::Reduce,
+            .id = id,
+            .quantity = quantity
+        };
+    }
+
+    static std::optional<Event> ParseDelete(const std::string_view command, std::istream& fields)
+    {
+        if (command != "DELETE") {
+            return std::nullopt;
+        }
+
+        id_t id{};
+        std::string id_str{};
+
+        if (!(fields >> id_str)) {
+            return std::nullopt;
+        }
+
+        if (!ValidInt(id_str, id)) {
+            return std::nullopt;
+        }
+
+        return Event{
+            .command = Command::Delete,
+            .id = id
+        };
+    }
+
+    static std::optional<Event> ParseReplace(const std::string_view command, std::istream& fields)
+    {
+        if (command != "REPLACE") {
+            return std::nullopt;
+        }
+
+        id_t id{};
+        id_t new_id{};
+        price_t price{};
+        quantity_t quantity{};
+
+        std::string id_str{};
+        std::string new_id_str{};
+        std::string price_str{};
+        std::string quantity_str{};
+
+        if (!(fields >> id_str >> new_id_str >> price_str >> quantity_str)) {
+            return std::nullopt;
+        }
+
+        if (
+            !ValidInt(id_str, id) ||
+            !ValidInt(new_id_str, new_id) ||
+            !ValidInt(price_str, price) ||
+            !ValidInt(quantity_str, quantity)
+        ) {
+            return std::nullopt;
+        }
+
+        return Event{
+            .command = Command::Replace,
+            .id = id,
+            .new_id = new_id,
+            .price = price,
+            .quantity = quantity
+        };
     }
 
     [[nodiscard]]
-    static bool ValidId(const std::string& token, id_t& id)
+    static bool ValidSide(const std::string& side_str, Order::Side& side)
     {
-        const auto [ptr, ec]{ std::from_chars(token.data(), token.data() + token.size(), id) };
+        if (side_str == "BUY") {
+            side = Order::Side::Buy;
+            return true;
+        }
 
-        return ptr == token.data() + token.size() && ec == std::errc{};
+        if (side_str == "SELL") {
+            side = Order::Side::Sell;
+            return true;
+        }
+
+        return false;
+    }
+
+
+    template<typename T>
+    [[nodiscard]]
+    static bool ValidInt(const std::string& t_str, T& id)
+    {
+        const auto [ptr, ec]{ std::from_chars(t_str.data(), t_str.data() + t_str.size(), id) };
+
+        return ptr == t_str.data() + t_str.size() && ec == std::errc{};
     }
 };
 

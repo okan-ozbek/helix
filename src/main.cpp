@@ -8,22 +8,43 @@
 #include "../include/Replay.h"
 #include "../include/Simplebook.h"
 
+class Benchmark
+{
+public:
+    explicit Benchmark(Replay& replay)
+        : m_replay{ std::make_unique<Replay>(replay) }
+        , m_start{ std::chrono::steady_clock::now() }
+    {}
+
+    ~Benchmark()
+    {
+        m_end = { std::chrono::steady_clock::now() };
+
+        const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(m_end - m_start).count();
+        const double seconds = std::chrono::duration<double>(m_end - m_start).count();
+        const double messages_per_second = static_cast<double>(m_replay->GetEventCount()) / seconds;
+
+        std::cout << "Execution time: " << duration << " us" << std::endl;
+        std::cout << "Synthetic messages: " << messages_per_second << " messages/s" << std::endl;
+    }
+
+private:
+    std::unique_ptr<Replay> m_replay;
+
+    std::chrono::time_point<std::chrono::steady_clock> m_start;
+    std::chrono::time_point<std::chrono::steady_clock> m_end;
+};
+
 int main()
 {
     auto orderbook = Orderbook{};
-    auto replay = Replay{ orderbook, "../data/Example.txt" };
+    auto replay = Replay{ orderbook, "../data/test.txt" };
+    
+    {
+        const auto benchmark{ Benchmark{ replay } };
 
-    const auto start = std::chrono::steady_clock::now();
-
-    replay.Run();
-
-    const auto end = std::chrono::steady_clock::now();
-    const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    const double seconds = std::chrono::duration<double>(end - start).count();
-    const double messages_per_second = static_cast<double>(replay.GetEventCount()) / seconds;
-
-    std::cout << "Execution time: " << duration << " us" << std::endl;
-    std::cout << "Synthetic messages: " << messages_per_second << " messages/s" << std::endl;
+        replay.Run();
+    }
 
     replay.Info();
     orderbook.Info();
