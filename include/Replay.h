@@ -29,8 +29,6 @@ namespace Helix
 
         void Info() const;
 
-
-
         std::size_t GetEventCount() const;
 
     private:

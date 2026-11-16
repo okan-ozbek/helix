@@ -1,9 +1,9 @@
 #include <format>
-#include <functional>
 
 #include "Book.h"
 
 #include <iostream>
+#include <random>
 #include <string>
 
 void Check(const bool condition, const std::string& message)
@@ -17,8 +17,6 @@ void BookTest()
 {
     using Helix::Book;
     using Helix::Order;
-
-
 
     const auto check_best{
         [&](const auto& result, const auto& side, const auto& expected_price, const auto& expected_quantity) -> void {
@@ -34,12 +32,10 @@ void BookTest()
                 result.has_value(),
                 "Best should exist after replacement"
             );
-
             Check(
                 result->price == expected_price,
                 std::format("Best {} price should be {} after replacement, the actual price is {}", side_str, expected_price, result->price)
             );
-
             Check(
                 result->total_quantity == expected_quantity,
                 std::format("Best {} total quantity should be {} after replacement, the actual quantity is {}", side_str, expected_quantity, result->total_quantity)
@@ -117,12 +113,20 @@ void BookTest()
             "Failed to add order"
         );
         Check(
+            book.Add(Order{ 2, 100, 20, Order::Side::Buy }) == Book::Status::Success,
+            "Failed to add another order at same price level"
+        );
+        check_best(book.BestBid(), Order::Side::Buy, 100, 30);
+
+        Check(
             book.Reduce(1, 10) == Book::Status::Success,
             "Failed to fully reduce order"
         );
+        check_best(book.BestBid(), Order::Side::Buy, 100, 20);
+
         Check(
-            !book.BestBid().has_value(),
-            "Best bid should not exist after full reduction"
+            book.Delete(1) == Book::Status::OrderNotFound,
+            "Failed to detect non-existent order after full reduction"
         );
     }
 
@@ -312,10 +316,63 @@ void BookTest()
     }
 }
 
+constexpr void GeneratedSequenceTest(const std::size_t& seed)
+{
+    using Helix::Book;
+    using Helix::Order;
+
+    auto book{ Book{} };
+
+    std::mt19937_64 random{ seed };
+
+    for (auto i{ 0uz }; i < book.OrderLimit(); ++i) {
+        auto order{
+            Order{
+                i + 1,
+                static_cast<Helix::price_t>(random() % 1000 + 1),
+                static_cast<Helix::quantity_t>(random() % 100 + 1),
+                random() % 2 == 0
+                    ? Order::Side::Buy
+                    : Order::Side::Sell
+            }
+        };
+
+        Check(
+            book.Add(order) == Book::Status::Success,
+            "Failed to add order"
+        );
+
+        if (i % 10 == 0) {
+            std::uniform_int_distribution distribution{ 1, order.RemainingQuantity() };
+            const auto quantity_to_reduce{ distribution(random) };
+
+            if (quantity_to_reduce == order.RemainingQuantity()) {
+                const auto count{ book.OrderCount() };
+
+                Check(
+                    book.Reduce(order.Id(), quantity_to_reduce) == Book::Status::Success,
+                    "Failed to fully reduce order"
+                );
+                Check(
+                    book.OrderCount() == count - 1,
+                    "Order count should decrease after full reduction"
+                );
+            }
+            else {
+                Check(
+                book.Reduce(order.Id(), quantity_to_reduce) == Book::Status::Success,
+                "Failed to reduce order"
+                );
+            }
+        }
+    }
+}
+
 int main()
 {
     try {
         BookTest();
+        GeneratedSequenceTest(42);
     }
     catch (const std::exception& error) {
         std::cerr << "Exception: " << error.what() << '\n';
