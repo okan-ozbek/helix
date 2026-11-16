@@ -134,6 +134,25 @@ void BookTest()
 
         const auto status_add_after_replace{ book.Add(Order{ 3, 300, 30, Order::Side::Buy }) };
         Check(status_add_after_replace == Book::Status::CapacityReached, "Failed to reach capacity after replacement");
+        Check(book.OrderLimit() == 1, "Order limit should be 1");
+        Check(book.BestBid().has_value(), "Best bid should exist after replacement");
+        Check(book.BestBid()->price == 200, "Best bid price should be 200 after replacement");
+        Check(book.BestBid()->total_quantity == 20, "Best bid total quantity should be 20 after replacement");
+        Check(book.OrderCount() == 1, "Order count should be 1 after replacement");
+    }
+
+    // Reduce by negative
+    {
+        auto book{ Book{} };
+
+        const auto status{ book.Add(Order{ 1, 100, 10, Order::Side::Buy }) };
+        Check(status == Book::Status::Success, "Failed to add order");
+
+        const auto status_reduce_negative{ book.Reduce(1, -5) };
+        Check(status_reduce_negative == Book::Status::InvalidOperation, "Failed to detect negative reduction");
+        Check(book.BestBid().has_value(), "Best bid should exist after invalid reduction");
+        Check(book.BestBid()->price == 100, "Best bid price should be 100 after invalid reduction");
+        Check(book.BestBid()->total_quantity == 10, "Best bid total quantity should be 10 after invalid reduction");
     }
 
     // Duplicate/Unknown ID
