@@ -5,7 +5,7 @@
 void Check(const bool condition, const std::string& message)
 {
     if (!condition) {
-        std::cerr << message << '\n';
+        throw std::runtime_error(message);
     }
 }
 
@@ -124,13 +124,16 @@ void BookTest()
 
     // Full-capacity replacement
     {
-        auto book{ Book{} };
+        auto book{ Book{ 1 } };
 
         const auto status{ book.Add(Order{ 1, 100, 10, Order::Side::Buy }) };
         Check(status == Book::Status::Success, "Failed to add order");
 
         const auto status_replace{ book.Replace(1, 2, 200, 20) };
         Check(status_replace == Book::Status::Success, "Failed to replace order");
+
+        const auto status_add_after_replace{ book.Add(Order{ 3, 300, 30, Order::Side::Buy }) };
+        Check(status_add_after_replace == Book::Status::CapacityReached, "Failed to reach capacity after replacement");
     }
 
     // Duplicate/Unknown ID
@@ -160,7 +163,7 @@ void BookTest()
 
     // Capacity reached
     {
-        auto book{ Book{} };
+        auto book{ Book{ 3 } };
 
         for (auto i{ 0uz }; i < book.OrderLimit(); ++i) {
             const auto status{ book.Add(Order{ i + 1, 100, 10, Order::Side::Buy }) };
