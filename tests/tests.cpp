@@ -264,16 +264,16 @@ void BookTest()
             "Failed to detect duplicate replacement ID"
         );
         Check(
-            book.Replace(2, 3, 200, 20) == Book::Status::OrderNotFound,
+            book.Replace(3, 4, 200, 20) == Book::Status::OrderNotFound,
             "Failed to detect unknown replacement ID"
         );
 
         check_best(book.BestBid(), Order::Side::Buy, 200, 20);
         Check(
-            book.Delete(1) == Book::Status::Success,
-            "Failed to delete order 1"
+            book.Delete(2) == Book::Status::Success,
+            "Failed to delete order 2"
         );
-        check_best(book.BestBid(), Order::Side::Buy, 200, 20);
+        check_best(book.BestBid(), Order::Side::Buy, 100, 10);
     }
 
     // Zero/excessive quantity or bad side/price
