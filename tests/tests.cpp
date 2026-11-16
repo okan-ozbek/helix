@@ -1,6 +1,10 @@
+#include <format>
+#include <functional>
+
 #include "Book.h"
 
 #include <iostream>
+#include <string>
 
 void Check(const bool condition, const std::string& message)
 {
@@ -13,6 +17,35 @@ void BookTest()
 {
     using Helix::Book;
     using Helix::Order;
+
+
+
+    const auto check_best{
+        [&](const auto& result, const auto& side, const auto& expected_price, const auto& expected_quantity) -> void {
+            using std::string_literals::operator ""s;
+
+            const auto side_str{
+                static_cast<Order::Side>(side) == Order::Side::Buy
+                    ? "bid"s
+                    : "ask"s
+            };
+
+            Check(
+                result.has_value(),
+                "Best should exist after replacement"
+            );
+
+            Check(
+                result->price == expected_price,
+                std::format("Best {} price should be {} after replacement, the actual price is {}", side_str, expected_price, result->price)
+            );
+
+            Check(
+                result->total_quantity == expected_quantity,
+                std::format("Best {} total quantity should be {} after replacement, the actual quantity is {}", side_str, expected_quantity, result->total_quantity)
+            );
+        }
+    };
 
     // Empty book
     {
@@ -32,13 +65,8 @@ void BookTest()
         const auto status_ask{ book.Add(Order{ 2, 110, 20, Order::Side::Sell }) };
         Check(status_ask == Book::Status::Success, "Failed to add ask order");
 
-        Check(book.BestBid().has_value(), "Best bid should exist");
-        Check(book.BestBid()->price == 100, "Best bid price should be 100");
-        Check(book.BestBid()->total_quantity == 10, "Best bid total quantity should be 10");
-
-        Check(book.BestAsk().has_value(), "Best ask should exist");
-        Check(book.BestAsk()->price == 110, "Best ask price should be 110");
-        Check(book.BestAsk()->total_quantity == 20, "Best ask total quantity should be 20");
+        check_best(book.BestBid(), Order::Side::Buy, 100, 10);
+        check_best(book.BestAsk(), Order::Side::Sell, 110, 20);
     }
 
     // Two orders at one price level
@@ -50,9 +78,7 @@ void BookTest()
 
         const auto status_add_another{ book.Add(Order{ 2, 100, 20, Order::Side::Buy }) };
         Check(status_add_another == Book::Status::Success, "Failed to add another order at same price level");
-        Check(book.BestBid().has_value(), "Best bid should exist");
-        Check(book.BestBid()->price == 100, "Best bid price should be 100");
-        Check(book.BestBid()->total_quantity == 30, "Best bid total quantity should be 30");
+        check_best(book.BestBid(), Order::Side::Buy, 100, 30);
     }
 
     // Partial reduction
@@ -64,9 +90,7 @@ void BookTest()
 
         const auto status_reduce{ book.Reduce(1, 5) };
         Check(status_reduce == Book::Status::Success, "Failed to reduce order");
-        Check(book.BestBid().has_value(), "Best bid should exist after reduction");
-        Check(book.BestBid()->price == 100, "Best bid price should be 100 after reduction");
-        Check(book.BestBid()->total_quantity == 5, "Best bid total quantity should be 5 after reduction");
+        check_best(book.BestBid(), Order::Side::Buy, 100, 5);
     }
 
     // Full reduction
@@ -90,15 +114,11 @@ void BookTest()
 
         const auto status_add_another{ book.Add(Order{ 2, 90, 20, Order::Side::Buy }) };
         Check(status_add_another == Book::Status::Success, "Failed to add another order");
-        Check(book.BestBid().has_value(), "Best bid should exist");
-        Check(book.BestBid()->price == 100, "Best bid price should be 100");
-        Check(book.BestBid()->total_quantity == 10, "Best bid total quantity should be 30");
+        check_best(book.BestBid(), Order::Side::Buy, 100, 10);
 
         const auto status_delete{ book.Delete(1) };
         Check(status_delete == Book::Status::Success, "Failed to delete order");
-        Check(book.BestBid().has_value(), "Best bid should exist after deletion");
-        Check(book.BestBid()->price == 90, "Best bid price should be 90 after deletion");
-        Check(book.BestBid()->total_quantity == 20, "Best bid total quantity should be 20 after deletion");
+        check_best(book.BestBid(), Order::Side::Buy, 90, 20);
     }
 
     // Empty side
@@ -135,10 +155,12 @@ void BookTest()
         const auto status_add_after_replace{ book.Add(Order{ 3, 300, 30, Order::Side::Buy }) };
         Check(status_add_after_replace == Book::Status::CapacityReached, "Failed to reach capacity after replacement");
         Check(book.OrderLimit() == 1, "Order limit should be 1");
-        Check(book.BestBid().has_value(), "Best bid should exist after replacement");
-        Check(book.BestBid()->price == 200, "Best bid price should be 200 after replacement");
-        Check(book.BestBid()->total_quantity == 20, "Best bid total quantity should be 20 after replacement");
+
+        check_best(book.BestBid(), Order::Side::Buy, 200, 20);
         Check(book.OrderCount() == 1, "Order count should be 1 after replacement");
+
+        Check(book.Delete(1) == Book::Status::OrderNotFound, "Failed to detect non-existent order after replacement");
+        Check(book.Delete(2) == Book::Status::Success, "Failed to delete replaced) order");
     }
 
     // Reduce by negative
@@ -150,9 +172,7 @@ void BookTest()
 
         const auto status_reduce_negative{ book.Reduce(1, -5) };
         Check(status_reduce_negative == Book::Status::InvalidOperation, "Failed to detect negative reduction");
-        Check(book.BestBid().has_value(), "Best bid should exist after invalid reduction");
-        Check(book.BestBid()->price == 100, "Best bid price should be 100 after invalid reduction");
-        Check(book.BestBid()->total_quantity == 10, "Best bid total quantity should be 10 after invalid reduction");
+        check_best(book.BestBid(), Order::Side::Buy, 100, 10);
     }
 
     // Duplicate/Unknown ID

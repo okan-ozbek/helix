@@ -57,10 +57,7 @@ namespace Helix
         void Info() const;
 
         [[nodiscard]] limit_t OrderLimit() const;
-        [[nodiscard]] limit_t OrderCount() const
-        {
-            return m_lookup_table.size();
-        }
+        [[nodiscard]] limit_t OrderCount() const;
 
     private:
         using bids_t = std::map<price_t, std::map<quantity_t, Orders>, std::greater<>>;
