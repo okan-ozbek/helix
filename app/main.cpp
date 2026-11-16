@@ -38,8 +38,11 @@ private:
 
 int main()
 {
-    auto orderbook = Helix::Book{};
-    auto replay = Helix::Replay{ orderbook, "../data/test.txt" };
+    using Helix::Book;
+    using Helix::Replay;
+
+    auto orderbook{ Book{} };
+    auto replay{ Replay{ orderbook, "../data/test.txt" } };
     
     {
         const auto benchmark{ Benchmark{ replay } };

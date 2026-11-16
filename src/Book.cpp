@@ -40,7 +40,7 @@ namespace Helix
         const auto& [best_price, quantity_map] = *m_asks.begin();
 
         large_quantity_t total_quantity = 0;
-        for (const auto & [quantity, orders]: quantity_map) {
+        for (const auto& [quantity, orders]: quantity_map) {
             total_quantity += quantity * static_cast<large_quantity_t>(orders.size());
         }
 
