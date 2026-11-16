@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <memory>
 
 #include "../include/Replay.h"
 #include "../include/Book.h"
