@@ -8,51 +8,52 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
-#include <stdexcept>
 #include <string_view>
 #include <vector>
-#include <sstream>
 #include <optional>
-#include <charconv>
 
 #include "Event.h"
 #include "Order.h"
-#include "Orderbook.h"
+#include "Book.h"
 
-struct Event;
-
-class Replay
+namespace Helix
 {
-public:
-    Replay(Orderbook&, std::string_view);
+    struct Event;
 
-    void Run();
+    class Replay
+    {
+    public:
+        Replay(Book&, std::string_view);
 
-    void Info() const;
+        void Run();
+
+        void Info() const;
 
 
 
-    std::size_t GetEventCount() const;
+        std::size_t GetEventCount() const;
 
-private:
-    std::vector<Event> m_events;
-    std::unordered_map<Orderbook::Status, std::uint32_t> m_status_counts;
-    Orderbook& m_orderbook;
+    private:
+        std::vector<Event> m_events;
+        std::unordered_map<Book::Status, std::uint32_t> m_status_counts;
+        Book& m_orderbook;
 
-    static std::string GetStatusString(Orderbook::Status);
+        static std::string GetStatusString(Book::Status);
 
-    void ParseFile(std::string_view);
+        void ParseFile(std::string_view);
 
-    static std::optional<Event> ParseEvent(std::string_view, std::istream&);
-    static std::optional<Event> ParseAdd(std::string_view, std::istream&);
-    static std::optional<Event> ParseReduce(std::string_view, std::istream&);
-    static std::optional<Event> ParseDelete(std::string_view, std::istream&);
-    static std::optional<Event> ParseReplace(std::string_view, std::istream&);
+        static std::optional<Event> ParseEvent(std::string_view, std::istream&);
+        static std::optional<Event> ParseAdd(std::string_view, std::istream&);
+        static std::optional<Event> ParseReduce(std::string_view, std::istream&);
+        static std::optional<Event> ParseDelete(std::string_view, std::istream&);
+        static std::optional<Event> ParseReplace(std::string_view, std::istream&);
 
-    [[nodiscard]] static bool ValidSide(const std::string& side_str, Order::Side& side);
+        [[nodiscard]] static bool ValidSide(const std::string& side_str, Order::Side& side);
 
-    template<typename T>
-    [[nodiscard]] static bool ValidInt(const std::string& t_str, T& id);
-};
+        template<typename T>
+        [[nodiscard]] static bool ValidInt(const std::string& t_str, T& id);
+    };
+}
+
 
 #endif //HELIX_REPLAY_H

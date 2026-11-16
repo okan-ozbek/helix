@@ -6,13 +6,13 @@
 #include <iostream>
 
 #include "../include/Replay.h"
-#include "../include/Orderbook.h"
+#include "../include/Book.h"
 
 class Benchmark
 {
 public:
-    explicit Benchmark(Replay& replay)
-        : m_replay{ std::make_unique<Replay>(replay) }
+    explicit Benchmark(Helix::Replay& replay)
+        : m_replay{ std::make_unique<Helix::Replay>(replay) }
         , m_start{ std::chrono::steady_clock::now() }
     {}
 
@@ -29,7 +29,7 @@ public:
     }
 
 private:
-    std::unique_ptr<Replay> m_replay;
+    std::unique_ptr<Helix::Replay> m_replay;
 
     std::chrono::time_point<std::chrono::steady_clock> m_start;
     std::chrono::time_point<std::chrono::steady_clock> m_end;
@@ -37,8 +37,8 @@ private:
 
 int main()
 {
-    auto orderbook = Orderbook{};
-    auto replay = Replay{ orderbook, "../data/test.txt" };
+    auto orderbook = Helix::Book{};
+    auto replay = Helix::Replay{ orderbook, "../data/test.txt" };
     
     {
         const auto benchmark{ Benchmark{ replay } };

@@ -5,11 +5,11 @@ set(CMAKE_CXX_STANDARD 23)
 
 add_executable(
     helix app/main.cpp
-    include/Orderbook.h
+        include/Book.h
     include/Event.h
     include/Replay.h
     include/Order.h
     src/Replay.cpp
-    src/Orderbook.cpp
+        src/Book.cpp
     src/Order.cpp
 )
