@@ -16,6 +16,6 @@ add_executable(helix
 target_link_libraries(helix PRIVATE helix_core)
 
 enable_testing()
-add_executable(book_tests tests/book_tests.cpp)
-target_link_libraries(book_tests PRIVATE helix_core)
-add_test(NAME book_tests COMMAND book_tests)
+add_executable(tests tests/tests.cpp)
+target_link_libraries(tests PRIVATE helix_core)
+add_test(NAME tests COMMAND tests)

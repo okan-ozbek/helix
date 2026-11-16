@@ -169,6 +169,12 @@ namespace Helix
     }
 
     [[nodiscard]]
+    limit_t Book::OrderLimit() const
+    {
+        return m_order_limit;
+    }
+
+    [[nodiscard]]
     bool Book::IsFull() const
     {
         return m_lookup_table.size() >= m_order_limit;

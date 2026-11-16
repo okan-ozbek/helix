@@ -14,16 +14,16 @@
 
 #include "Order.h"
 
-using id_t = std::uint64_t;
-using price_t = std::int32_t;
-using quantity_t = std::int32_t;
-using large_price_t = std::int64_t;
-using large_quantity_t = std::int64_t;
-
 namespace Helix
 {
-    class Order;
+    using id_t = std::uint64_t;
+    using price_t = std::int32_t;
+    using quantity_t = std::int32_t;
+    using large_price_t = std::int64_t;
+    using large_quantity_t = std::int64_t;
+    using limit_t = std::size_t;
 
+    class Order;
 
     class Book
     {
@@ -56,11 +56,12 @@ namespace Helix
 
         void Info() const;
 
+        [[nodiscard]] limit_t OrderLimit() const;
+
     private:
         using bids_t = std::map<price_t, std::map<quantity_t, Orders>, std::greater<>>;
         using asks_t = std::map<price_t, std::map<quantity_t, Orders>, std::less<>>;
         using lookup_table_t = std::unordered_map<id_t, Order>;
-        using limit_t = std::size_t;
 
         bids_t m_bids;
         asks_t m_asks;
