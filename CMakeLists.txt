@@ -3,13 +3,19 @@ project(helix)
 
 set(CMAKE_CXX_STANDARD 23)
 
-add_executable(
-    helix app/main.cpp
-    include/Orderbook.h
-    include/Event.h
-    include/Replay.h
-    include/Order.h
-    src/Replay.cpp
-    src/Orderbook.cpp
+add_library(helix_core
+    src/Book.cpp
     src/Order.cpp
 )
+target_include_directories(helix_core PUBLIC include)
+
+add_executable(helix
+    app/main.cpp
+    src/Replay.cpp
+)
+target_link_libraries(helix PRIVATE helix_core)
+
+enable_testing()
+add_executable(tests tests/tests.cpp)
+target_link_libraries(tests PRIVATE helix_core)
+add_test(NAME tests COMMAND tests)
