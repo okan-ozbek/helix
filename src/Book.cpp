@@ -82,6 +82,7 @@ namespace Helix
         auto& order{ m_lookup_table.at(id) };
 
         if (
+            quantity_to_remove < 0 ||
             quantity_to_remove == 0 ||
             quantity_to_remove > order.RemainingQuantity()
         ) {
