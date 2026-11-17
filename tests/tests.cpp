@@ -320,22 +320,34 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
 {
     using Helix::Book;
     using Helix::Order;
+    using std::string_literals::operator ""s;
 
     auto book{ Book{} };
 
     std::mt19937_64 random{ seed };
 
+    Helix::large_quantity_t expected_total_bid_quantity{ 0 };
+    Helix::large_quantity_t expected_total_ask_quantity{ 0 };
+
     for (auto i{ 0uz }; i < book.OrderLimit(); ++i) {
         auto order{
             Order{
                 i + 1,
-                static_cast<Helix::price_t>(random() % 1000 + 1),
+                500, // Static to ensure that we have a single price level
                 static_cast<Helix::quantity_t>(random() % 100 + 1),
                 random() % 2 == 0
                     ? Order::Side::Buy
                     : Order::Side::Sell
             }
         };
+
+        if (order.IsBuy()) {
+            expected_total_bid_quantity += order.RemainingQuantity();
+        }
+
+        if (order.IsSell()) {
+            expected_total_ask_quantity += order.RemainingQuantity();
+        }
 
         Check(
             book.Add(order) == Book::Status::Success,
@@ -364,6 +376,31 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
                 "Failed to reduce order"
                 );
             }
+
+            const auto validate_expected_quantity{
+                [&](auto& expected_quantity, const auto& best) -> void {
+                    const auto side{
+                        order.IsBuy()
+                            ? "bid"s
+                            : "ask"s
+                    };
+
+                    expected_quantity -= quantity_to_reduce;
+
+                    Check(
+                        best.has_value(),
+                        std::format("Best {} should exist", side)
+                    );
+                    Check(
+                        best->total_quantity == expected_quantity,
+                        std::format("Best {} total quantity should be equal to the expected total {} quantity", side, side)
+                    );
+                }
+            };
+
+            order.IsBuy()
+                ? validate_expected_quantity(expected_total_bid_quantity, book.BestBid())
+                : validate_expected_quantity(expected_total_ask_quantity, book.BestAsk());
         }
     }
 }
