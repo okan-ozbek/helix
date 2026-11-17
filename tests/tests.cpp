@@ -387,14 +387,22 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
 
                     expected_quantity -= quantity_to_reduce;
 
-                    Check(
-                        best.has_value(),
-                        std::format("Best {} should exist", side)
-                    );
-                    Check(
-                        best->total_quantity == expected_quantity,
-                        std::format("Best {} total quantity should be equal to the expected total {} quantity", side, side)
-                    );
+                    if (expected_quantity == 0) {
+                        Check(
+                            !best.has_value(),
+                            std::format("Best {} should not exist after full reduction", side)
+                        );
+                    }
+                    else {
+                        Check(
+                            best.has_value(),
+                            std::format("Best {} should exist", side)
+                        );
+                        Check(
+                            best->total_quantity == expected_quantity,
+                            std::format("Best {} total quantity should be equal to the expected total {} quantity", side, side)
+                        );
+                    }
                 }
             };
 
@@ -409,7 +417,7 @@ int main()
 {
     try {
         BookTest();
-        GeneratedSequenceTest(42);
+        GeneratedSequenceTest(64);
     }
     catch (const std::exception& error) {
         std::cerr << "Exception: " << error.what() << '\n';
