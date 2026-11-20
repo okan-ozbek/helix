@@ -420,7 +420,7 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
             const auto validate_expected_quantity{
                 [&](auto& expected_quantity, const auto& best) -> void {
                     const auto string{
-                        target_order.side == Order::Side::Buy
+                        selected_side == Order::Side::Buy
                             ? "bid"s
                             : "ask"s
                     };
