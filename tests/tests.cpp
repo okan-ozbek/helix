@@ -392,17 +392,15 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
         );
 
         if (i % 10 == 0) {
-            // Randomly select an order to reduce
             std::uniform_int_distribution order_distribution{ 0, static_cast<int>(orders.size() - 1) };
             const auto& order_index{ order_distribution(random) };
             const auto& target_order{ orders[order_index] };
 
-            // Randomly reduce the order by a quantity between 1 and the remaining quantity
             std::uniform_int_distribution quantity_distribution{ 1, target_order.remaining_quantity };
             const auto& quantity_to_reduce{ quantity_distribution(random) };
 
-            // Copy of selected side, in-case we delete the target order in a full reduction scenario, we still have the side to validate best bid/ask
             const auto selected_side{ target_order.side };
+            metadata.id = { target_order.id };
 
             // Full reduction
             if (quantity_to_reduce == target_order.remaining_quantity) {
@@ -427,7 +425,6 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
 
                 orders.erase(orders.begin() + order_index);
             }
-            // Partial reduction
             else {
                 Check(
                     book.Reduce(target_order.id, quantity_to_reduce) == Book::Status::Success,
@@ -435,7 +432,6 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
                     metadata
                 );
 
-                // Update of the remaining quantity in the mock order
                 target_order.remaining_quantity -= quantity_to_reduce;
 
                 Check(
@@ -445,7 +441,6 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
                 );
             }
 
-            // Validate best bid/ask after reduction
             const auto validate_expected_quantity{
                 [&](auto& expected_quantity, const auto& best) -> void {
                     const auto string{
