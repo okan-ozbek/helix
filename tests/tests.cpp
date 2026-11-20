@@ -334,12 +334,13 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
     {
         Helix::id_t id{};
         Helix::price_t price{};
-        Helix::quantity_t remaining_quantity{};
+        mutable Helix::quantity_t remaining_quantity{};
         Order::Side side{};
     };
 
     std::vector<MockOrder> orders{};
 
+    // Add orders to the book
     for (auto i{ 0uz }; i < book.OrderLimit(); ++i) {
         orders.emplace_back(
             i + 1,
@@ -352,6 +353,7 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
 
         const auto&[id, price, remaining_quantity, side]{ orders.back() };
 
+        // Update expected total quantities
         if (side == Order::Side::Buy) {
             expected_total_bid_quantity += remaining_quantity;
         }
@@ -366,24 +368,24 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
         );
 
         if (i % 10 == 0) {
+            // Randomly select an order to reduce
             std::uniform_int_distribution order_distribution{ 0, static_cast<int>(orders.size() - 1) };
-
             const auto& order_index{ order_distribution(random) };
-            const auto& target_order{ book.Find(orders[order_index].id) };
+            const auto& target_order{ orders[order_index] };
 
-            Check(
-                target_order.has_value(),
-                "Failed to find order"
-            );
-
-            std::uniform_int_distribution quantity_distribution{ 1, target_order->RemainingQuantity() };
+            // Randomly reduce the order by a quantity between 1 and the remaining quantity
+            std::uniform_int_distribution quantity_distribution{ 1, target_order.remaining_quantity };
             const auto& quantity_to_reduce{ quantity_distribution(random) };
 
-            if (quantity_to_reduce == target_order->RemainingQuantity()) {
+            // Copy of selected side, in-case we delete the target order in a full reduction scenario, we still have the side to validate best bid/ask
+            const auto selected_side{ target_order.side };
+
+            // Full reduction
+            if (quantity_to_reduce == target_order.remaining_quantity) {
                 const auto count{ book.OrderCount() };
 
                 Check(
-                    book.Reduce(target_order->Id(), quantity_to_reduce) == Book::Status::Success,
+                    book.Reduce(target_order.id, quantity_to_reduce) == Book::Status::Success,
                     "Failed to fully reduce order"
                 );
                 Check(
@@ -391,34 +393,34 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
                     "Order count should decrease after full reduction"
                 );
 
-                orders.erase(
-                    std::ranges::remove_if(
-                        orders,
-                        [&](const auto& current_order) -> bool {
-                            return current_order.id == target_order->Id();
-                        }
-                    ).begin(),
-                    orders.end()
+                Check(
+                    !book.Find(target_order.id).has_value(),
+                    "Order should not exist after full reduction"
                 );
+
+                orders.erase(orders.begin() + order_index);
             }
+            // Partial reduction
             else {
                 Check(
-                    book.Reduce(target_order->Id(), quantity_to_reduce) == Book::Status::Success,
+                    book.Reduce(target_order.id, quantity_to_reduce) == Book::Status::Success,
                     "Failed to reduce order"
                 );
 
-                orders[order_index].remaining_quantity -= quantity_to_reduce;
+                // Update of the remaining quantity in the mock order
+                target_order.remaining_quantity -= quantity_to_reduce;
 
                 Check(
-                    book.Find(target_order->Id())->RemainingQuantity() == orders[order_index].remaining_quantity,
+                    book.Find(target_order.id)->RemainingQuantity() == target_order.remaining_quantity,
                     "Remaining quantity should be updated after reduction"
                 );
             }
 
+            // Validate best bid/ask after reduction
             const auto validate_expected_quantity{
                 [&](auto& expected_quantity, const auto& best) -> void {
                     const auto string{
-                        target_order->IsBuy()
+                        target_order.side == Order::Side::Buy
                             ? "bid"s
                             : "ask"s
                     };
@@ -444,7 +446,7 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
                 }
             };
 
-            target_order->IsBuy()
+            selected_side == Order::Side::Buy
                 ? validate_expected_quantity(expected_total_bid_quantity, book.BestBid())
                 : validate_expected_quantity(expected_total_ask_quantity, book.BestAsk());
         }
