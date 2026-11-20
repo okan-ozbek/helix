@@ -48,6 +48,7 @@ namespace Helix
 
         [[nodiscard]] std::optional<PriceLevel> BestBid() const;
         [[nodiscard]] std::optional<PriceLevel> BestAsk() const;
+        [[nodiscard]] std::optional<Order> Find(id_t) const;
 
         Status Add(const Order&);
         Status Reduce(id_t, quantity_t);

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <format>
 
 #include "Book.h"
@@ -329,17 +330,19 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
     Helix::large_quantity_t expected_total_bid_quantity{ 0 };
     Helix::large_quantity_t expected_total_ask_quantity{ 0 };
 
+    std::vector<Order> orders{};
+
     for (auto i{ 0uz }; i < book.OrderLimit(); ++i) {
-        auto order{
-            Order{
-                i + 1,
-                500, // Static to ensure that we have a single price level
-                static_cast<Helix::quantity_t>(random() % 100 + 1),
-                random() % 2 == 0
-                    ? Order::Side::Buy
-                    : Order::Side::Sell
-            }
-        };
+        orders.emplace_back(
+            i + 1,
+            500, // Static to ensure that we have a single price level
+            static_cast<Helix::quantity_t>(random() % 100 + 1),
+            random() % 2 == 0
+                ? Order::Side::Buy
+                : Order::Side::Sell
+        );
+
+        const auto& order{ orders.back() };
 
         if (order.IsBuy()) {
             expected_total_bid_quantity += order.RemainingQuantity();
@@ -355,32 +358,50 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
         );
 
         if (i % 10 == 0) {
-            std::uniform_int_distribution distribution{ 1, order.RemainingQuantity() };
-            const auto quantity_to_reduce{ distribution(random) };
+            std::uniform_int_distribution order_distribution{ 0, static_cast<int>(orders.size() - 1) };
+            const auto& target_order{ book.Find(orders[order_distribution(random)].Id()) };
 
-            if (quantity_to_reduce == order.RemainingQuantity()) {
+            Check(
+                target_order.has_value(),
+                "Failed to find order"
+            );
+
+            std::uniform_int_distribution quantity_distribution{ 1, target_order->RemainingQuantity() };
+            const auto& quantity_to_reduce{ quantity_distribution(random) };
+
+            if (quantity_to_reduce == target_order->RemainingQuantity()) {
                 const auto count{ book.OrderCount() };
 
                 Check(
-                    book.Reduce(order.Id(), quantity_to_reduce) == Book::Status::Success,
+                    book.Reduce(target_order->Id(), quantity_to_reduce) == Book::Status::Success,
                     "Failed to fully reduce order"
                 );
                 Check(
                     book.OrderCount() == count - 1,
                     "Order count should decrease after full reduction"
                 );
+
+                orders.erase(
+                    std::ranges::remove_if(
+                        orders,
+                        [&](const auto& current_order) -> bool {
+                            return current_order.Id() == target_order->Id();
+                        }
+                    ).begin(),
+                    orders.end()
+                );
             }
             else {
                 Check(
-                book.Reduce(order.Id(), quantity_to_reduce) == Book::Status::Success,
-                "Failed to reduce order"
+                    book.Reduce(target_order->Id(), quantity_to_reduce) == Book::Status::Success,
+                    "Failed to reduce order"
                 );
             }
 
             const auto validate_expected_quantity{
                 [&](auto& expected_quantity, const auto& best) -> void {
                     const auto side{
-                        order.IsBuy()
+                        target_order->IsBuy()
                             ? "bid"s
                             : "ask"s
                     };
@@ -406,7 +427,7 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
                 }
             };
 
-            order.IsBuy()
+            target_order->IsBuy()
                 ? validate_expected_quantity(expected_total_bid_quantity, book.BestBid())
                 : validate_expected_quantity(expected_total_ask_quantity, book.BestAsk());
         }

@@ -47,6 +47,16 @@ namespace Helix
         return PriceLevel{ best_price, total_quantity };
     }
 
+    [[nodiscard]]
+    std::optional<Order> Book::Find(const id_t id) const
+    {
+        if (!m_lookup_table.contains(id)) {
+            return std::nullopt;
+        }
+
+        return m_lookup_table.at(id);
+    }
+
     Book::Status Book::Add(const Order& order)
     {
         if (m_lookup_table.contains(order.Id())) {
