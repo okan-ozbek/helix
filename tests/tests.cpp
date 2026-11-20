@@ -330,36 +330,46 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
     Helix::large_quantity_t expected_total_bid_quantity{ 0 };
     Helix::large_quantity_t expected_total_ask_quantity{ 0 };
 
-    std::vector<Order> orders{};
+    struct MockOrder
+    {
+        Helix::id_t id{};
+        Helix::price_t price{};
+        Helix::quantity_t remaining_quantity{};
+        Order::Side side{};
+    };
+
+    std::vector<MockOrder> orders{};
 
     for (auto i{ 0uz }; i < book.OrderLimit(); ++i) {
         orders.emplace_back(
             i + 1,
-            500, // Static to ensure that we have a single price level
+            500,
             static_cast<Helix::quantity_t>(random() % 100 + 1),
             random() % 2 == 0
                 ? Order::Side::Buy
                 : Order::Side::Sell
         );
 
-        const auto& order{ orders.back() };
+        const auto&[id, price, remaining_quantity, side]{ orders.back() };
 
-        if (order.IsBuy()) {
-            expected_total_bid_quantity += order.RemainingQuantity();
+        if (side == Order::Side::Buy) {
+            expected_total_bid_quantity += remaining_quantity;
         }
 
-        if (order.IsSell()) {
-            expected_total_ask_quantity += order.RemainingQuantity();
+        if (side == Order::Side::Sell) {
+            expected_total_ask_quantity += remaining_quantity;
         }
 
         Check(
-            book.Add(order) == Book::Status::Success,
+            book.Add({ id, price, remaining_quantity, side }) == Book::Status::Success,
             "Failed to add order"
         );
 
         if (i % 10 == 0) {
             std::uniform_int_distribution order_distribution{ 0, static_cast<int>(orders.size() - 1) };
-            const auto& target_order{ book.Find(orders[order_distribution(random)].Id()) };
+
+            const auto& order_index{ order_distribution(random) };
+            const auto& target_order{ book.Find(orders[order_index].id) };
 
             Check(
                 target_order.has_value(),
@@ -385,7 +395,7 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
                     std::ranges::remove_if(
                         orders,
                         [&](const auto& current_order) -> bool {
-                            return current_order.Id() == target_order->Id();
+                            return current_order.id == target_order->Id();
                         }
                     ).begin(),
                     orders.end()
@@ -396,11 +406,18 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
                     book.Reduce(target_order->Id(), quantity_to_reduce) == Book::Status::Success,
                     "Failed to reduce order"
                 );
+
+                orders[order_index].remaining_quantity -= quantity_to_reduce;
+
+                Check(
+                    book.Find(target_order->Id())->RemainingQuantity() == orders[order_index].remaining_quantity,
+                    "Remaining quantity should be updated after reduction"
+                );
             }
 
             const auto validate_expected_quantity{
                 [&](auto& expected_quantity, const auto& best) -> void {
-                    const auto side{
+                    const auto string{
                         target_order->IsBuy()
                             ? "bid"s
                             : "ask"s
@@ -411,17 +428,17 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
                     if (expected_quantity == 0) {
                         Check(
                             !best.has_value(),
-                            std::format("Best {} should not exist after full reduction", side)
+                            std::format("Best {} should not exist after full reduction", string)
                         );
                     }
                     else {
                         Check(
                             best.has_value(),
-                            std::format("Best {} should exist", side)
+                            std::format("Best {} should exist", string)
                         );
                         Check(
                             best->total_quantity == expected_quantity,
-                            std::format("Best {} total quantity should be equal to the expected total {} quantity", side, side)
+                            std::format("Best {} total quantity should be equal to the expected total {} quantity", string, string)
                         );
                     }
                 }
