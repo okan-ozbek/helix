@@ -317,8 +317,6 @@ void BookTest()
     }
 }
 
-
-
 int main()
 {
     try {

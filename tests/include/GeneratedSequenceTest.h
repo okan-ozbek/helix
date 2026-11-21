@@ -41,12 +41,16 @@ class GeneratedSequenceTest
 public:
     GeneratedSequenceTest() : seed{ 42 }
     {
+        ValidateSetup();
+
         metadata = { seed, 0, 0 };
         Run();
     }
 
     explicit GeneratedSequenceTest(const std::size_t& seed) : seed{ seed }
     {
+        ValidateSetup();
+
         metadata = { seed, 0, 0 };
         Run();
     }
@@ -55,6 +59,8 @@ public:
         : seed{ seed }
         , hit_frequency{ hit_frequency }
     {
+        ValidateSetup();
+
         metadata = { seed, 0, 0 };
         Run();
     }
@@ -268,20 +274,24 @@ private:
             book.Add({ id, price * 2, remaining_quantity * 2, (side == Order::Side::Buy ? Order::Side::Sell : Order::Side::Buy) }) == Book::Status::OrderAlreadyExists,
             "Adding an existing order should fail"
         );
+        ValidateState();
+
         Check(
             book.Replace(id, id, price * 2, remaining_quantity * 2) == Book::Status::InvalidOperation,
             "Replacing an order with the same ID should fail"
         );
+        ValidateState();
+
         Check(
             book.Reduce(id, remaining_quantity * 2) == Book::Status::InvalidOperation,
             "Reducing an order with excessive quantity should fail"
         );
+        ValidateState();
+
         Check(
             book.Delete(id + book.OrderLimit() * 10) == Book::Status::OrderNotFound,
             "Deleting a non-existent order should fail"
         );
-
-        ValidateExistingOrder(order, book.Find(id));
         ValidateState();
     }
 
@@ -335,6 +345,12 @@ private:
                 best_ask->total_quantity == expected_total_ask_quantity,
                 "Best ask total quantity mismatch"
             );
+        }
+
+        for (const auto& order : orders) {
+            const auto& existing_order{ book.Find(order.id) };
+
+            ValidateExistingOrder(order, existing_order);
         }
     }
 
