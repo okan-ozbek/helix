@@ -7,28 +7,9 @@
 #include <random>
 #include <string>
 
-struct Metadata
-{
-    std::size_t seed{};
-    std::size_t iteration{};
-    Helix::id_t id{};
-};
-
-void Check(const bool condition, const std::string& message, Metadata metadata = {})
+void Check(const bool condition, const std::string& message)
 {
     if (!condition) {
-        if (metadata.seed || metadata.iteration || metadata.id) {
-            throw std::runtime_error(
-                std::format(
-                    "Check failed at seed {}, iteration {}, id {}: {}",
-                    metadata.seed,
-                    metadata.iteration,
-                    metadata.id,
-                    message
-                )
-            );
-        }
-
         throw std::runtime_error(message);
     }
 }
@@ -336,19 +317,18 @@ void BookTest()
     }
 }
 
-constexpr void GeneratedSequenceTest(const std::size_t& seed)
+class GeneratedSequenceTest
 {
-    using Helix::Book;
-    using Helix::Order;
-    using std::string_literals::operator ""s;
+public:
+    using Book = Helix::Book;
+    using Order = Helix::Order;
 
-    auto book{ Book{} };
-    auto metadata{ Metadata{ seed, 0, 0 } };
-
-    std::mt19937_64 random{ seed };
-
-    Helix::large_quantity_t expected_total_bid_quantity{ 0 };
-    Helix::large_quantity_t expected_total_ask_quantity{ 0 };
+    struct Metadata
+    {
+        std::size_t seed{};
+        std::size_t iteration{};
+        Helix::id_t id{};
+    };
 
     struct MockOrder
     {
@@ -358,12 +338,77 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
         Order::Side side{};
     };
 
+    GeneratedSequenceTest() : seed{ 42 }
+    {
+        metadata = { seed, 0, 0 };
+        Run();
+    }
+
+    explicit GeneratedSequenceTest(const std::size_t& seed) : seed{ seed }
+    {
+        metadata = { seed, 0, 0 };
+        Run();
+    }
+
+    explicit GeneratedSequenceTest(const std::size_t& seed, const int reduce_frequency, const int delete_frequency)
+        : reduce_frequency{ reduce_frequency }
+        , delete_frequency{ delete_frequency }
+        , seed{ seed }
+    {
+        metadata = { seed, 0, 0 };
+        Run();
+    }
+
+private:
+    Metadata metadata{};
+
+    Book book{ Book{} };
+
+    int reduce_frequency{ 10 };
+    int delete_frequency{ 15 };
+
+    std::size_t seed{};
+    std::mt19937 random{ static_cast<unsigned int>(seed) };
+
     std::vector<MockOrder> orders{};
 
-    // Add orders to the book
-    for (auto i{ 0uz }; i < book.OrderLimit(); ++i) {
+    Helix::large_quantity_t expected_total_bid_quantity{ 0 };
+    Helix::large_quantity_t expected_total_ask_quantity{ 0 };
+
+    void Check(const bool condition, const std::string& message)
+    {
+        if (!condition) {
+            throw std::runtime_error(
+                std::format(
+                    "Check failed at seed {}, iteration {}, id {}: {}",
+                    metadata.seed,
+                    metadata.iteration,
+                    metadata.id,
+                    message
+                )
+            );
+        }
+    }
+
+    void Run()
+    {
+        for (metadata.iteration = {}; metadata.iteration < book.OrderLimit(); ++metadata.iteration) {
+            AddOrder();
+
+            if (metadata.iteration % reduce_frequency == 0) {
+                ReduceOrder();
+            }
+
+            if (metadata.iteration % delete_frequency == 0) {
+                DeleteOrder();
+            }
+        }
+    }
+
+    void AddOrder()
+    {
         orders.emplace_back(
-            i + 1,
+            metadata.iteration + 1,
             500,
             static_cast<Helix::quantity_t>(random() % 100 + 1),
             random() % 2 == 0
@@ -371,114 +416,127 @@ constexpr void GeneratedSequenceTest(const std::size_t& seed)
                 : Order::Side::Sell
         );
 
-        metadata.iteration = { i };
-        metadata.id = { i + 1 };
+        metadata.id = { metadata.iteration + 1 };
 
         const auto&[id, price, remaining_quantity, side]{ orders.back() };
 
-        // Update expected total quantities
-        if (side == Order::Side::Buy) {
-            expected_total_bid_quantity += remaining_quantity;
-        }
-
-        if (side == Order::Side::Sell) {
-            expected_total_ask_quantity += remaining_quantity;
-        }
+        if (side == Order::Side::Buy) expected_total_bid_quantity += remaining_quantity;
+        if (side == Order::Side::Sell) expected_total_ask_quantity += remaining_quantity;
 
         Check(
             book.Add({ id, price, remaining_quantity, side }) == Book::Status::Success,
-            "Failed to add order",
-            metadata
+            "Failed to add order"
+        );
+    }
+
+    void ReduceOrder()
+    {
+        if (orders.empty()) {
+            return;
+        }
+
+        const auto& [order_index, order]{ SelectRandomOrder() };
+        const auto& [id, price, remaining_quantity, side]{ order };
+
+        const auto selected_side { side };
+        metadata.id = { id };
+
+        std::uniform_int_distribution quantity_distribution{ 1, remaining_quantity };
+        const auto& quantity_to_reduce{ quantity_distribution(random) };
+
+        if (quantity_to_reduce == remaining_quantity) {
+            Check(
+                book.Reduce(id, quantity_to_reduce) == Book::Status::Success,
+                "Failed to fully reduce order"
+            );
+            Check(
+                !book.Find(id).has_value(),
+                "Order should not exist after full reduction"
+            );
+
+            orders.erase(orders.begin() + order_index);
+        }
+        else {
+            remaining_quantity -= quantity_to_reduce;
+
+            Check(
+                book.Reduce(id, quantity_to_reduce) == Book::Status::Success,
+                "Failed to reduce order"
+            );
+            Check(
+                book.Find(id)->RemainingQuantity() == remaining_quantity,
+                "Remaining quantity should be updated after reduction"
+            );
+        }
+
+        if (selected_side == Order::Side::Buy) expected_total_bid_quantity -= quantity_to_reduce;
+        if (selected_side == Order::Side::Sell) expected_total_ask_quantity -= quantity_to_reduce;
+
+        ValidateState();
+    }
+
+    void DeleteOrder()
+    {
+        if (orders.empty()) {
+            return;
+        }
+
+        const auto& [order_index, order]{ SelectRandomOrder() };
+        const auto [id, price, remaining_quantity, side]{ order };
+
+        metadata.id = { id };
+
+        Check(
+            book.Delete(id) == Book::Status::Success,
+            "Failed to delete order"
+        );
+        Check(
+            !book.Find(id).has_value(),
+            "Order should not exist after deletion"
         );
 
-        if (i % 10 == 0) {
-            std::uniform_int_distribution order_distribution{ 0, static_cast<int>(orders.size() - 1) };
-            const auto& order_index{ order_distribution(random) };
-            const auto& target_order{ orders[order_index] };
+        if (side == Order::Side::Buy) expected_total_bid_quantity -= remaining_quantity;
+        if (side == Order::Side::Sell) expected_total_ask_quantity -= remaining_quantity;
 
-            std::uniform_int_distribution quantity_distribution{ 1, target_order.remaining_quantity };
-            const auto& quantity_to_reduce{ quantity_distribution(random) };
+        orders.erase(orders.begin() + order_index);
 
-            const auto selected_side{ target_order.side };
-            metadata.id = { target_order.id };
+        ValidateState();
+    }
 
-            // Full reduction
-            if (quantity_to_reduce == target_order.remaining_quantity) {
-                const auto count{ book.OrderCount() };
+    void ValidateState()
+    {
+        Check(
+            book.OrderCount() == orders.size(),
+            "Order count mismatch"
+        );
 
-                Check(
-                    book.Reduce(target_order.id, quantity_to_reduce) == Book::Status::Success,
-                    "Failed to fully reduce order",
-                    metadata
-                );
-                Check(
-                    book.OrderCount() == count - 1,
-                    "Order count should decrease after full reduction",
-                    metadata
-                );
+        const auto& best_bid{ book.BestBid() };
+        const auto& best_ask{ book.BestAsk() };
 
-                Check(
-                    !book.Find(target_order.id).has_value(),
-                    "Order should not exist after full reduction",
-                    metadata
-                );
+        if (best_bid.has_value()) {
+            Check(
+                best_bid->total_quantity == expected_total_bid_quantity,
+                "Best bid total quantity mismatch"
+            );
+        }
 
-                orders.erase(orders.begin() + order_index);
-            }
-            else {
-                Check(
-                    book.Reduce(target_order.id, quantity_to_reduce) == Book::Status::Success,
-                    "Failed to reduce order",
-                    metadata
-                );
-
-                target_order.remaining_quantity -= quantity_to_reduce;
-
-                Check(
-                    book.Find(target_order.id)->RemainingQuantity() == target_order.remaining_quantity,
-                    "Remaining quantity should be updated after reduction",
-                    metadata
-                );
-            }
-
-            const auto validate_expected_quantity{
-                [&](auto& expected_quantity, const auto& best) -> void {
-                    const auto string{
-                        selected_side == Order::Side::Buy
-                            ? "bid"s
-                            : "ask"s
-                    };
-
-                    expected_quantity -= quantity_to_reduce;
-
-                    if (expected_quantity == 0) {
-                        Check(
-                            !best.has_value(),
-                            std::format("Best {} should not exist after full reduction", string),
-                            metadata
-                        );
-                    }
-                    else {
-                        Check(
-                            best.has_value(),
-                            std::format("Best {} should exist", string),
-                            metadata
-                        );
-                        Check(
-                            best->total_quantity == expected_quantity,
-                            std::format("Best {} total quantity should be equal to the expected total {} quantity", string, string),
-                            metadata
-                        );
-                    }
-                }
-            };
-
-            selected_side == Order::Side::Buy
-                ? validate_expected_quantity(expected_total_bid_quantity, book.BestBid())
-                : validate_expected_quantity(expected_total_ask_quantity, book.BestAsk());
+        if (best_ask.has_value()) {
+            Check(
+                best_ask->total_quantity == expected_total_ask_quantity,
+                "Best ask total quantity mismatch"
+            );
         }
     }
-}
+
+    std::pair<const int, MockOrder&> SelectRandomOrder()
+    {
+        std::uniform_int_distribution order_distribution{ 0, static_cast<int>(orders.size() - 1) };
+        const auto& order_index{ order_distribution(random) };
+        auto& order{ orders[order_index] };
+
+        return { order_index, order };
+    }
+};
 
 int main()
 {
