@@ -30,10 +30,10 @@ struct MockOrder
 
 struct HitFrequency
 {
-    int reduce_frequency{};
-    int delete_frequency{};
-    int replace_frequency{};
-    int invalidation_frequency{};
+    int reduce_frequency{ 5 };
+    int delete_frequency{ 10 };
+    int replace_frequency{ 15 };
+    int invalidation_frequency{ 20};
 };
 
 class GeneratedSequenceTest
@@ -74,7 +74,7 @@ private:
     Helix::large_quantity_t expected_total_bid_quantity{ 0 };
     Helix::large_quantity_t expected_total_ask_quantity{ 0 };
 
-    void Check(const bool condition, const std::string& message)
+    void Check(const bool condition, const std::string& message) const
     {
         if (!condition) {
             throw std::runtime_error(
@@ -277,7 +277,7 @@ private:
             "Reducing an order with excessive quantity should fail"
         );
         Check(
-            book.Delete(id + 1000) == Book::Status::OrderNotFound,
+            book.Delete(id + book.OrderLimit() * 10) == Book::Status::OrderNotFound,
             "Deleting a non-existent order should fail"
         );
 
@@ -285,7 +285,7 @@ private:
         ValidateState();
     }
 
-    void ValidateState()
+    void ValidateState() const
     {
         Check(
             book.OrderCount() == orders.size(),
@@ -338,7 +338,7 @@ private:
         }
     }
 
-    void ValidateExistingOrder(const MockOrder& order, const std::optional<Order>& existing_order)
+    void ValidateExistingOrder(const MockOrder& order, const std::optional<Order>& existing_order) const
     {
         Check(
             existing_order.has_value(),
@@ -362,15 +362,53 @@ private:
         );
     }
 
-    std::pair<const int, MockOrder&> SelectRandomOrder()
+    void ValidateSetup() const
+    {
+        Check(
+            book.OrderLimit() > 0,
+            "Order limit should be greater than zero"
+        );
+        Check(
+            book.OrderCount() == 0,
+            "Order count should be zero at setup"
+        );
+        Check(
+            !book.BestBid().has_value(),
+            "Best bid should not exist at setup"
+        );
+        Check(
+            !book.BestAsk().has_value(),
+            "Best ask should not exist at setup"
+        );
+        Check(
+            hit_frequency.reduce_frequency > 0,
+            "Reduce frequency should be greater than zero"
+        );
+        Check(
+            hit_frequency.delete_frequency > 0,
+            "Delete frequency should be greater than zero"
+        );
+        Check(
+            hit_frequency.replace_frequency > 0,
+            "Replace frequency should be greater than zero"
+        );
+        Check(
+            hit_frequency.invalidation_frequency > 0,
+            "Invalidation frequency should be greater than zero"
+        );
+    }
+
+    [[nodiscard]]
+    std::pair<const int, const MockOrder&> SelectRandomOrder()
     {
         std::uniform_int_distribution order_distribution{ 0, static_cast<int>(orders.size() - 1) };
         const auto& order_index{ order_distribution(random) };
-        auto& order{ orders[order_index] };
+        const auto& order{ orders[order_index] };
 
         return { order_index, order };
     }
 
+    [[nodiscard]]
     Helix::id_t ClaimNextId()
     {
         const auto current_id{ next_id };
