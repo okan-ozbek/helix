@@ -211,6 +211,7 @@ namespace Helix
         return
             id <= 0 ||
             new_id <= 0 ||
+            id == new_id ||
             new_price <= 0 ||
             new_quantity <= 0;
     }

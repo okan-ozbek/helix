@@ -16,6 +16,7 @@ add_executable(helix
 target_link_libraries(helix PRIVATE helix_core)
 
 enable_testing()
-add_executable(tests tests/tests.cpp)
+add_executable(tests tests/tests.cpp
+        tests/include/GeneratedSequenceTest.h)
 target_link_libraries(tests PRIVATE helix_core)
 add_test(NAME tests COMMAND tests)

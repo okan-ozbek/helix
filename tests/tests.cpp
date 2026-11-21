@@ -1,11 +1,11 @@
-#include <algorithm>
 #include <format>
 
 #include "Book.h"
+#include "include/GeneratedSequenceTest.h"
 
 #include <iostream>
-#include <random>
 #include <string>
+
 
 void Check(const bool condition, const std::string& message)
 {
@@ -317,232 +317,13 @@ void BookTest()
     }
 }
 
-class GeneratedSequenceTest
-{
-public:
-    using Book = Helix::Book;
-    using Order = Helix::Order;
 
-    struct Metadata
-    {
-        std::size_t seed{};
-        std::size_t iteration{};
-        Helix::id_t id{};
-    };
-
-    struct MockOrder
-    {
-        Helix::id_t id{};
-        Helix::price_t price{};
-        mutable Helix::quantity_t remaining_quantity{};
-        Order::Side side{};
-    };
-
-    GeneratedSequenceTest() : seed{ 42 }
-    {
-        metadata = { seed, 0, 0 };
-        Run();
-    }
-
-    explicit GeneratedSequenceTest(const std::size_t& seed) : seed{ seed }
-    {
-        metadata = { seed, 0, 0 };
-        Run();
-    }
-
-    explicit GeneratedSequenceTest(const std::size_t& seed, const int reduce_frequency, const int delete_frequency)
-        : reduce_frequency{ reduce_frequency }
-        , delete_frequency{ delete_frequency }
-        , seed{ seed }
-    {
-        metadata = { seed, 0, 0 };
-        Run();
-    }
-
-private:
-    Metadata metadata{};
-
-    Book book{ Book{} };
-
-    int reduce_frequency{ 10 };
-    int delete_frequency{ 15 };
-
-    std::size_t seed{};
-    std::mt19937 random{ static_cast<unsigned int>(seed) };
-
-    std::vector<MockOrder> orders{};
-
-    Helix::large_quantity_t expected_total_bid_quantity{ 0 };
-    Helix::large_quantity_t expected_total_ask_quantity{ 0 };
-
-    void Check(const bool condition, const std::string& message)
-    {
-        if (!condition) {
-            throw std::runtime_error(
-                std::format(
-                    "Check failed at seed {}, iteration {}, id {}: {}",
-                    metadata.seed,
-                    metadata.iteration,
-                    metadata.id,
-                    message
-                )
-            );
-        }
-    }
-
-    void Run()
-    {
-        for (metadata.iteration = {}; metadata.iteration < book.OrderLimit(); ++metadata.iteration) {
-            AddOrder();
-
-            if (metadata.iteration % reduce_frequency == 0) {
-                ReduceOrder();
-            }
-
-            if (metadata.iteration % delete_frequency == 0) {
-                DeleteOrder();
-            }
-        }
-    }
-
-    void AddOrder()
-    {
-        orders.emplace_back(
-            metadata.iteration + 1,
-            500,
-            static_cast<Helix::quantity_t>(random() % 100 + 1),
-            random() % 2 == 0
-                ? Order::Side::Buy
-                : Order::Side::Sell
-        );
-
-        metadata.id = { metadata.iteration + 1 };
-
-        const auto&[id, price, remaining_quantity, side]{ orders.back() };
-
-        if (side == Order::Side::Buy) expected_total_bid_quantity += remaining_quantity;
-        if (side == Order::Side::Sell) expected_total_ask_quantity += remaining_quantity;
-
-        Check(
-            book.Add({ id, price, remaining_quantity, side }) == Book::Status::Success,
-            "Failed to add order"
-        );
-    }
-
-    void ReduceOrder()
-    {
-        if (orders.empty()) {
-            return;
-        }
-
-        const auto& [order_index, order]{ SelectRandomOrder() };
-        const auto& [id, price, remaining_quantity, side]{ order };
-
-        const auto selected_side { side };
-        metadata.id = { id };
-
-        std::uniform_int_distribution quantity_distribution{ 1, remaining_quantity };
-        const auto& quantity_to_reduce{ quantity_distribution(random) };
-
-        if (quantity_to_reduce == remaining_quantity) {
-            Check(
-                book.Reduce(id, quantity_to_reduce) == Book::Status::Success,
-                "Failed to fully reduce order"
-            );
-            Check(
-                !book.Find(id).has_value(),
-                "Order should not exist after full reduction"
-            );
-
-            orders.erase(orders.begin() + order_index);
-        }
-        else {
-            remaining_quantity -= quantity_to_reduce;
-
-            Check(
-                book.Reduce(id, quantity_to_reduce) == Book::Status::Success,
-                "Failed to reduce order"
-            );
-            Check(
-                book.Find(id)->RemainingQuantity() == remaining_quantity,
-                "Remaining quantity should be updated after reduction"
-            );
-        }
-
-        if (selected_side == Order::Side::Buy) expected_total_bid_quantity -= quantity_to_reduce;
-        if (selected_side == Order::Side::Sell) expected_total_ask_quantity -= quantity_to_reduce;
-
-        ValidateState();
-    }
-
-    void DeleteOrder()
-    {
-        if (orders.empty()) {
-            return;
-        }
-
-        const auto& [order_index, order]{ SelectRandomOrder() };
-        const auto [id, price, remaining_quantity, side]{ order };
-
-        metadata.id = { id };
-
-        Check(
-            book.Delete(id) == Book::Status::Success,
-            "Failed to delete order"
-        );
-        Check(
-            !book.Find(id).has_value(),
-            "Order should not exist after deletion"
-        );
-
-        if (side == Order::Side::Buy) expected_total_bid_quantity -= remaining_quantity;
-        if (side == Order::Side::Sell) expected_total_ask_quantity -= remaining_quantity;
-
-        orders.erase(orders.begin() + order_index);
-
-        ValidateState();
-    }
-
-    void ValidateState()
-    {
-        Check(
-            book.OrderCount() == orders.size(),
-            "Order count mismatch"
-        );
-
-        const auto& best_bid{ book.BestBid() };
-        const auto& best_ask{ book.BestAsk() };
-
-        if (best_bid.has_value()) {
-            Check(
-                best_bid->total_quantity == expected_total_bid_quantity,
-                "Best bid total quantity mismatch"
-            );
-        }
-
-        if (best_ask.has_value()) {
-            Check(
-                best_ask->total_quantity == expected_total_ask_quantity,
-                "Best ask total quantity mismatch"
-            );
-        }
-    }
-
-    std::pair<const int, MockOrder&> SelectRandomOrder()
-    {
-        std::uniform_int_distribution order_distribution{ 0, static_cast<int>(orders.size() - 1) };
-        const auto& order_index{ order_distribution(random) };
-        auto& order{ orders[order_index] };
-
-        return { order_index, order };
-    }
-};
 
 int main()
 {
     try {
         BookTest();
-        GeneratedSequenceTest(64);
+        GeneratedSequenceTest(64, { 5, 8, 13, 21 });
     }
     catch (const std::exception& error) {
         std::cerr << "Exception: " << error.what() << '\n';
